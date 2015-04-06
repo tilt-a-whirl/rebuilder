@@ -32,8 +32,9 @@ import os.path
 import itertools
 
 def processArgs():
-    'Processes command line arguments'
-    
+    """
+    Processes command line arguments
+    """
     rebld_args = {}
         
     usage = "Usage: %prog srcImage destImage [options]"
@@ -77,8 +78,9 @@ def processArgs():
     return (rebld_args)
     
 def buildAlgorithmList(opts):
-    'Builds list of algorithms'
-    
+    """
+    Builds list of algorithms
+    """
     algs = []
     for i in range(1, len(opts)+1):
         for subset in itertools.combinations(opts, i):
@@ -90,8 +92,9 @@ def buildAlgorithmList(opts):
     return algs
         
 def loadImages(file1, file2):
-    'Loads the source and destination images and returns both'
-              
+    """
+    Loads the source and destination images and returns both
+    """
     # Open the images
     img1 = Image.open(file1)
     img2 = Image.open(file2)
@@ -104,7 +107,9 @@ def loadImages(file1, file2):
     return (img1, img2)
 
 def calculateBlocks(img, blockSize):
-    'Calculates block size variables'
+    """
+    Calculates block size variables
+    """
     # Divide the image into blocks of size blockSize
     numBlocksHoriz = int(img.size[0] / blockSize)
     numBlocksVert = int(img.size[1] / blockSize)
@@ -123,8 +128,9 @@ def calculateBlocks(img, blockSize):
     return blockVars
 
 def buildImageLuminanceList(img, blockSize):
-    'Returns a sorted list of average luminances, one for each block'
-    
+    """
+    Returns a sorted list of average luminances, one for each block
+    """
     blockVars = calculateBlocks(img, blockSize)
     numBlocksHoriz = blockVars['numBlocksHoriz']
     numBlocks = blockVars['numBlocks']
@@ -163,9 +169,17 @@ def buildImageLuminanceList(img, blockSize):
     # Return the list
     return lumList   
 
-def buildImageList(img, blockSize):
-    'Builds a list of average l h s v r g b, one for each block'
-    
+def buildSrcImageList(img):
+    """
+    Builds a list of average l h s v r g b, one for each block. Sets own 
+    block size.
+    """
+    pass
+
+def buildDestImageList(img, blockSize):
+    """
+    Builds a list of average l h s v r g b, one for each block
+    """
     blockVars = calculateBlocks(img, blockSize)
     numBlocksHoriz = blockVars['numBlocksHoriz']
     numBlocks = blockVars['numBlocks']
@@ -217,8 +231,9 @@ def buildImageList(img, blockSize):
     return avgList
 
 def buildOutputImage(src, dest, blockSize, hdr, alg):
-    'Builds output image'
-    
+    """
+    Builds output image
+    """
     # Create and build an output file that is the same size as the original 
     # portrait file
     outfile = Image.new("RGB", (dest.size[0], dest.size[1]))
@@ -231,8 +246,8 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
     destBlockWidth = int(dest.size[0] / destNumBlocksHoriz)
     destBlockHeight = int(dest.size[1] / int(dest.size[1] / blockSize))
     
-    srcDictList = buildImageList(src, 32)
-    destDictList = buildImageList(dest, blockSize)
+    srcDictList = buildSrcImageList(src)
+    destDictList = buildDestImageList(dest, blockSize)
         
     # Grab the number of blocks in the destination image because we'll be using 
     # this over and over
@@ -345,8 +360,9 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
     return outfile
 
 def saveOutputImage(outfile, srcFile, destFile, hdr, alg, size):
-    'Saves the output image'
-    
+    """
+    Saves the output image
+    """
     # Save the final image
     head, tail = os.path.split(srcFile)
     sfile, ext = os.path.splitext(tail)
@@ -364,8 +380,9 @@ def saveOutputImage(outfile, srcFile, destFile, hdr, alg, size):
     print("Saved " + outfileName)
     
 def RGBtoHSV(r, g, b):
-    'Converts RGB to HSV'
-    
+    """
+    Converts RGB to HSV
+    """
     minRGB = min( r, g, b )
     maxRGB = max( r, g, b )
     v = float(maxRGB)
@@ -393,7 +410,9 @@ def RGBtoHSV(r, g, b):
     return (h, s, v)
     
 if __name__ == '__main__':
-        
+    """ 
+    Main function
+    """    
     args = processArgs()
     opts = ['l', 'h', 's', 'v', 'r', 'g', 'b']
     if (args['test']):
