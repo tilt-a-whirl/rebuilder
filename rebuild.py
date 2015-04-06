@@ -90,7 +90,7 @@ def buildAlgorithmList(opts):
     return algs
         
 def loadImages(file1, file2):
-    'Main function'
+    'Loads the source and destination images and returns both'
               
     # Open the images
     img1 = Image.open(file1)
@@ -376,7 +376,7 @@ def RGBtoHSV(r, g, b):
     else:                       # r = g = b = 0 ; s = 0, h is undefined
         s = 0.0
         h = 0.0
-        return ((h, s, v))
+        return (h, s, v)
 
     if (minRGB == maxRGB):
         h = 0.0
@@ -390,7 +390,7 @@ def RGBtoHSV(r, g, b):
     if (h < 0.0):  
         h += 360.0
         
-    return ((h, s, v))
+    return (h, s, v)
     
 if __name__ == '__main__':
         
