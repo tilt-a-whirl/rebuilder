@@ -82,10 +82,10 @@ def buildAlgorithmList(opts):
     algs = []
     for i in range(1, len(opts)+1):
         for subset in itertools.combinations(opts, i):
-            str = ''
+            st = ''
             for char in subset:
-                str = str + char
-            algs.append(str)
+                st = st + char
+            algs.append(st)
                                     
     return algs
         
