@@ -28,6 +28,7 @@ from PIL import Image
 from random import randint
 from optparse import OptionParser
 from sys import stderr, argv
+from math import sqrt
 import os.path
 import itertools
 
@@ -106,7 +107,22 @@ def loadImages(file1, file2):
     
     return (img1, img2)
 
-def calculateBlocks(img, blockSize):
+def calculateSrcBlockSize(img):
+    """
+    Calculates block size for src image of any size, to be divided evenly
+    into 256 square-ish tiles (as close as possible).
+    """
+    # 1024 / 512 = 2
+    aspect = float(img.size[0]) / float(img.size[1])
+    rows = sqrt(256.0 / aspect)
+    cols = aspect * rows
+    rows = round(rows)
+    cols = round(cols)
+    x = img.size[0] / rows
+    y = img.size[1] / cols
+    return (x, y)
+    
+def calculateBlockVars(img, blockSize): #<-- change to tuple
     """
     Calculates block size variables
     """
@@ -131,7 +147,7 @@ def buildImageLuminanceList(img, blockSize):
     """
     Returns a sorted list of average luminances, one for each block
     """
-    blockVars = calculateBlocks(img, blockSize)
+    blockVars = calculateBlockVars(img, blockSize)
     numBlocksHoriz = blockVars['numBlocksHoriz']
     numBlocks = blockVars['numBlocks']
     blockWidth = blockVars['blockWidth']
@@ -169,18 +185,11 @@ def buildImageLuminanceList(img, blockSize):
     # Return the list
     return lumList   
 
-def buildSrcImageList(img):
+def buildImageList(img, blockSize):
     """
-    Builds a list of average l h s v r g b, one for each block. Sets own 
-    block size.
+    Builds a list of average l h s v r g b, one for each block.
     """
-    pass
-
-def buildDestImageList(img, blockSize):
-    """
-    Builds a list of average l h s v r g b, one for each block
-    """
-    blockVars = calculateBlocks(img, blockSize)
+    blockVars = calculateBlockVars(img, blockSize)
     numBlocksHoriz = blockVars['numBlocksHoriz']
     numBlocks = blockVars['numBlocks']
     blockWidth = blockVars['blockWidth']
@@ -239,15 +248,16 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
     outfile = Image.new("RGB", (dest.size[0], dest.size[1]))
     
     # Calculate some block sizes and counts
-    srcNumBlocksHoriz = int(src.size[0] / 32)
+    srcBlockSize = calculateSrcBlockSize(src)
+    srcNumBlocksHoriz = int(src.size[0] / srcBlockSize)
     srcBlockWidth = int(src.size[0] / srcNumBlocksHoriz)
-    srcBlockHeight = int(src.size[1] / int(src.size[1] / 32))
+    srcBlockHeight = int(src.size[1] / int(src.size[1] / srcBlockSize))
     destNumBlocksHoriz = int(dest.size[0] / blockSize)
     destBlockWidth = int(dest.size[0] / destNumBlocksHoriz)
     destBlockHeight = int(dest.size[1] / int(dest.size[1] / blockSize))
     
-    srcDictList = buildSrcImageList(src)
-    destDictList = buildDestImageList(dest, blockSize)
+    srcDictList = buildImageList(src, srcBlockSize)
+    destDictList = buildImageList(dest, blockSize)
         
     # Grab the number of blocks in the destination image because we'll be using 
     # this over and over
