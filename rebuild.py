@@ -100,11 +100,6 @@ def loadImages(file1, file2):
     img1 = Image.open(file1)
     img2 = Image.open(file2)
     
-    # Check that the source image is 512 x 512
-    if ((img1.size[0] != 512) or (img1.size[1] != 512)):
-        stderr.write("Source image must be 512 x 512\n")
-        raise SystemExit(1)
-    
     return (img1, img2)
 
 def calculateSrcBlockSize(img):
@@ -118,110 +113,51 @@ def calculateSrcBlockSize(img):
     cols = aspect * rows
     rows = round(rows)
     cols = round(cols)
-    x = img.size[0] / rows
-    y = img.size[1] / cols
+    x = int(img.size[0] / rows)
+    y = int(img.size[1] / cols)
     return (x, y)
-    
-def calculateBlockVars(img, blockSize): #<-- change to tuple
-    """
-    Calculates block size variables
-    """
-    # Divide the image into blocks of size blockSize
-    numBlocksHoriz = int(img.size[0] / blockSize)
-    numBlocksVert = int(img.size[1] / blockSize)
-    numBlocks = numBlocksHoriz * numBlocksVert
-    blockWidth = int(img.size[0] / numBlocksHoriz)
-    blockHeight = int(img.size[1] / numBlocksVert)
-    blockNumPixels = blockWidth * blockHeight
-    
-    blockVars = {}
-    blockVars['numBlocksHoriz'] = numBlocksHoriz
-    blockVars['numBlocks'] = numBlocks
-    blockVars['blockWidth'] = blockWidth
-    blockVars['blockHeight'] = blockHeight
-    blockVars['blockNumPixels'] = blockNumPixels
-    
-    return blockVars
 
-def buildImageLuminanceList(img, blockSize):
-    """
-    Returns a sorted list of average luminances, one for each block
-    """
-    blockVars = calculateBlockVars(img, blockSize)
-    numBlocksHoriz = blockVars['numBlocksHoriz']
-    numBlocks = blockVars['numBlocks']
-    blockWidth = blockVars['blockWidth']
-    blockHeight = blockVars['blockHeight']
-    blockNumPixels = blockVars['blockNumPixels']
-    
-    # Build the list of average block luminances, then sort
-    lumList = []    
-    for i in range(numBlocks):
-        start_x = int(i % numBlocksHoriz) * blockWidth 
-        start_y = int(i / numBlocksHoriz) * blockHeight
-        end_x = start_x + blockWidth
-        end_y = start_y + blockHeight
-        blockBox = (start_x, start_y, end_x, end_y)
-        block = img.crop(blockBox)
-        colors = block.getcolors(blockNumPixels)
-        rsum, gsum, bsum = 0, 0, 0
-        for item in colors:
-            rsum += item[1][0] * item[0]
-            gsum += item[1][1] * item[0]
-            bsum += item[1][2] * item[0]            
-        avg_r = rsum / blockNumPixels
-        avg_g = gsum / blockNumPixels
-        avg_b = bsum / blockNumPixels
-        avgLum = (avg_r * 0.299) + (avg_g * 0.587) + (avg_b * 0.114)
-        
-        # We store the original index and luminance together as a tuple, 
-        # because we will need to calculate the coordinates of where this 
-        # block originally came from
-        lumList.append((i, avgLum))
-    
-    # Sort based on the second element of the tuple, i.e. the luminance
-    lumList.sort(key=lambda tup: tup[1])
-    
-    # Return the list
-    return lumList   
-
-def buildImageList(img, blockSize):
+def buildImageList(img, maxValue, blockDims):
     """
     Builds a list of average l h s v r g b, one for each block.
     """
-    blockVars = calculateBlockVars(img, blockSize)
-    numBlocksHoriz = blockVars['numBlocksHoriz']
-    numBlocks = blockVars['numBlocks']
-    blockWidth = blockVars['blockWidth']
-    blockHeight = blockVars['blockHeight']
-    blockNumPixels = blockVars['blockNumPixels']
+    blockSizeX = blockDims[0]
+    blockSizeY = blockDims[1]
+    blockSize = blockSizeX * blockSizeY
+    numBlocksX = int(img.size[0] / blockSizeX)
+    numBlocksY = int(img.size[1] / blockSizeY)
+    numBlocks = numBlocksX * numBlocksY
     
     # Build the list of average block hues, values, or saturations, then sort
     avgList = []    
     for i in range(numBlocks):
-        start_x = int(i % numBlocksHoriz) * blockWidth 
-        start_y = int(i / numBlocksHoriz) * blockHeight
-        end_x = start_x + blockWidth
-        end_y = start_y + blockHeight
+        start_x = int(i % numBlocksX) * blockSizeX
+        start_y = int(i / numBlocksX) * blockSizeY
+        end_x = start_x + blockSizeX
+        end_y = start_y + blockSizeY
         blockBox = (start_x, start_y, end_x, end_y)
         block = img.crop(blockBox)
-        colors = block.getcolors(blockNumPixels)
+        colors = block.getcolors(blockSize)
         rsum, gsum, bsum = 0, 0, 0
         for item in colors:
             rsum += item[1][0] * item[0]
             gsum += item[1][1] * item[0]
             bsum += item[1][2] * item[0]            
-        avg_r = int(rsum / blockNumPixels)
-        avg_g = int(gsum / blockNumPixels)
-        avg_b = int(bsum / blockNumPixels)
+        avg_r = int(rsum / blockSize)
+        avg_g = int(gsum / blockSize)
+        avg_b = int(bsum / blockSize)
         avgLum = (avg_r * 0.299) + (avg_g * 0.587) + (avg_b * 0.114)
         
         h, s, v = RGBtoHSV(avg_r, avg_g, avg_b)
         
-        # Scale hue and saturation to 0, 255 and convert to int
-        h = int((h / 360) * 255)
-        s = int(s * 255)
-        v = int(v)
+        # Scale all to 0, maxValue and convert to int
+        avgLum = int((avgLum / 255) * maxValue)
+        h = int((h / 360) * maxValue)
+        s = int(s * maxValue)
+        v = int((v / 255) * maxValue)
+        avg_r = int((avg_r / 255) * maxValue)
+        avg_g = int((avg_g / 255) * maxValue)
+        avg_b = int((avg_b / 255) * maxValue)
         
         # We store the original index and avg together as a tuple, 
         # because we will need to calculate the coordinates of where this 
@@ -248,25 +184,27 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
     outfile = Image.new("RGB", (dest.size[0], dest.size[1]))
     
     # Calculate some block sizes and counts
-    srcBlockSize = calculateSrcBlockSize(src)
-    srcNumBlocksHoriz = int(src.size[0] / srcBlockSize)
-    srcBlockWidth = int(src.size[0] / srcNumBlocksHoriz)
-    srcBlockHeight = int(src.size[1] / int(src.size[1] / srcBlockSize))
-    destNumBlocksHoriz = int(dest.size[0] / blockSize)
-    destBlockWidth = int(dest.size[0] / destNumBlocksHoriz)
-    destBlockHeight = int(dest.size[1] / int(dest.size[1] / blockSize))
+    srcBlockSizeX, srcBlockSizeY = calculateSrcBlockSize(src)
+    srcNumBlocksX = int(src.size[0] / srcBlockSizeX)
+    destNumBlocksX = int(dest.size[0] / blockSize)
+    destNumBlocksY = int(dest.size[1] / blockSize)
+    destBlockSizeX = blockSize
+    destBlockSizeY = blockSize
+        
+    srcDictList = buildImageList(src, 255, (srcBlockSizeX, srcBlockSizeY))
+    srcNumBlocks = len(srcDictList)
     
-    srcDictList = buildImageList(src, srcBlockSize)
-    destDictList = buildImageList(dest, blockSize)
+    destDictList = buildImageList(dest, srcNumBlocks, \
+                                  (destBlockSizeX, destBlockSizeY))
         
     # Grab the number of blocks in the destination image because we'll be using 
     # this over and over
-    numBlocks = len(destDictList)
-    
+    destNumBlocks = len(destDictList)
+        
     # Average together elements of the tuples based on the algorithm string
     srcList = []
     destList = []
-    for i in range(len(srcDictList)):
+    for i in range(srcNumBlocks):
         s_dict = srcDictList[i]
         s_sum = 0
         if ('l' in alg):
@@ -287,7 +225,7 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
         s_avg = int(s_sum / len(alg))
         srcList.append((i, s_avg))
         
-    for i in range(numBlocks):
+    for i in range(destNumBlocks):
         d_dict = destDictList[i]
         d_sum = 0
         if ('l' in alg):
@@ -305,13 +243,13 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
         if ('b' in alg):
             d_sum += d_dict['b']
         
-        d_avg = int(d_sum / len(alg))        
+        d_avg = int(d_sum / len(alg))   
         destList.append((i, d_avg))    
             
     # Sort based on the second element of the tuple, i.e. the hue
     srcList.sort(key=lambda tup: tup[1])
     destList.sort(key=lambda tup: tup[1])
-    
+            
     # Create a coordinate lookup list based on whether the hdr option is on or 
     # off. If off, we look up the corresponding memory block using the actual 
     # luminance value of the portrait block. This can mean that not all memory 
@@ -323,26 +261,26 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
     # memory list will be used.
     coordList = []                    
     if (hdr):
-        scale = 1.0 / numBlocks * 256.0
-        for i in range(numBlocks):
+        scale = 1.0 / destNumBlocks * srcNumBlocks
+        for i in range(destNumBlocks):
             j = int(scale * i)
             coordList.append((srcList[j][0], destList[i][0]))
            
     else:
-        for i in range(numBlocks):
+        for i in range(destNumBlocks):
             j = int(destList[i][1])
             coordList.append((srcList[j][0], destList[i][0]))
 
-    for i in range(numBlocks):
+    for i in range(destNumBlocks):
     
         # Grab the source and destination list indices
         source_idx, dest_idx = coordList[i]
         
         # Calculate the source block coordinates
-        start_x = int(source_idx % srcNumBlocksHoriz) * srcBlockWidth 
-        start_y = int(source_idx / srcNumBlocksHoriz) * srcBlockHeight
-        end_x = start_x + srcBlockWidth
-        end_y = start_y + srcBlockHeight
+        start_x = int(source_idx % srcNumBlocksX) * srcBlockSizeX
+        start_y = int(source_idx / srcNumBlocksX) * srcBlockSizeY
+        end_x = start_x + srcBlockSizeX
+        end_y = start_y + srcBlockSizeY
         
         # Grab the source image block
         srcBlock = src.crop((start_x, start_y, end_x, end_y))
@@ -357,12 +295,12 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
             
         # If the portrait block size is not equal to the memory block size, 
         # resize the memory block to be the same size as the portrait block
-        if (destBlockWidth * destBlockHeight != srcBlockWidth * srcBlockHeight):
-            srcBlock = srcBlock.resize((destBlockWidth, destBlockHeight))
+        if (destBlockSizeX * destBlockSizeY != srcBlockSizeX * srcBlockSizeY):
+            srcBlock = srcBlock.resize((destBlockSizeX, destBlockSizeY))
             
         # Calculate the coordinates of the portrait block to be replaced
-        start_x = (dest_idx % destNumBlocksHoriz) * destBlockWidth
-        start_y = (dest_idx / destNumBlocksHoriz) * destBlockHeight
+        start_x = (dest_idx % destNumBlocksX) * destBlockSizeX
+        start_y = (dest_idx / destNumBlocksX) * destBlockSizeY
         
         # Paste the memory block into the correct coordinates of the output file
         outfile.paste(srcBlock, (start_x, start_y)) 
