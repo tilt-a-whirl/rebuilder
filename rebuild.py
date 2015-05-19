@@ -5,22 +5,21 @@ rebuild.py by Amy Tucker
 
 This rebuilds one image using the tiles of another image. It accepts two source 
 images. Usage:
-    rebuild.py srcFile destFile [-s blockSize -t]
+    rebuild.py srcFile destFile [-s blockSize -t type]
     -s blockSize: Size of tiles in destination image (resolution)
-    -t: Test mode (luminance only)
+    -t: Create one single type (l, h, s, v, r, g, or b)
     
 The output will be saved to the directory from which the script is called, in
 a folder named 'output.' The output file name will be in the form 
 destBaseName_srcBaseName_type.tif. For example, if the source image is called 
 backyard.tif, and the destination image is called me.tif, the block size is 30 
-and it's in test mode (luminance only), the final output will be named 
-me_backyard_30_l.tif and me_backyard_30_l_hdr.tiff. No matter the input file 
-formats, the output will be a TIFF. Note: This has only been tested with TIFF 
-files as input.  
+and the type is luminance, the final output will be named me_backyard_30_l.tif 
+and me_backyard_30_l_hdr.tiff. No matter the input file formats, the output 
+will be a TIFF. Note: This has only been tested with TIFF files as input.  
 
-When not in test mode, images are processed using luminance (l), hue (h), 
-saturation (s), value (v), red (r), green (g), blue (b), or any combination,
-resulting in 254 possible combinations (and output files).
+When a type is not provided, images are processed using luminance (l), hue (h), 
+saturation (s), value (v), red (r), green (g), blue (b), and all combinations,
+resulting in 254 unique combinations (and output files).
 
 """
 
@@ -42,18 +41,30 @@ def processArgs():
     p = OptionParser(usage=usage)
     p.add_option("-s", action="store", dest="blockSize", \
                  help="Block size in pixels (def = 30)")
-    p.add_option("-t", action="store_true", dest="test", \
-                 help="Test mode (luminance only)")
+    p.add_option("-t", action="store", dest="type", \
+                 help="Type (l, h, s, v, r, g or b - optional)")
     
-    p.set_defaults(blockSize=30)
-    p.set_defaults(test=False)
+    p.set_defaults(blockSize = 30)
+    p.set_defaults(type = '')
     
     opts, args = p.parse_args()
     
     if (len(args) != 2):
         stderr.write("Wrong number of arguments\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t]\n")
+        stderr.write("[-s blockSize -t type]\n")
+        raise SystemExit(1)
+    
+    if (len(opts.type) > 1):
+        stderr.write("Type only takes one parameter\n")
+        stderr.write("Usage: %s srcImage destImage " % argv[0])
+        stderr.write("[-s blockSize -t type]\n")
+        raise SystemExit(1)
+    
+    if (opts.type != '' and opts.type not in 'lhsvrgb'):
+        stderr.write("Type only takes l, h, s, v, r, g, or b\n")
+        stderr.write("Usage: %s srcImage destImage " % argv[0])
+        stderr.write("[-s blockSize -t type]\n")
         raise SystemExit(1)
     
     # Set filenames and additional options
@@ -61,19 +72,19 @@ def processArgs():
     rebld_args['dest'] = args[1]
     
     rebld_args['blockSize'] = int(opts.blockSize)
-    rebld_args['test'] = opts.test
+    rebld_args['type'] = opts.type
         
     # Check for valid files. PIL will check that they're valid images.
     if (not os.path.isfile(rebld_args['src'])):
         stderr.write("Invalid source file\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t]\n")
+        stderr.write("[-s blockSize -t type]\n")
         raise SystemExit(1)
     
     if (not os.path.isfile(rebld_args['dest'])):
         stderr.write("Invalid destination file\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t]\n")
+        stderr.write("[-s blockSize -t type]\n")
         raise SystemExit(1)
     
     return (rebld_args)
@@ -363,8 +374,8 @@ if __name__ == '__main__':
     """    
     args = processArgs()
     opts = ['l', 'h', 's', 'v', 'r', 'g', 'b']
-    if (args['test']):
-        algs = ['l']
+    if (args['type'] != ''):
+        algs = args['type']
     else:
         algs = buildAlgorithmList(opts)
     
