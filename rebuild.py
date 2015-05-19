@@ -153,7 +153,7 @@ def buildImageList(img, maxValue, blockDims):
         for item in colors:
             rsum += item[1][0] * item[0]
             gsum += item[1][1] * item[0]
-            bsum += item[1][2] * item[0]            
+            bsum += item[1][2] * item[0]  
         avg_r = int(rsum / blockSize)
         avg_g = int(gsum / blockSize)
         avg_b = int(bsum / blockSize)
@@ -162,13 +162,13 @@ def buildImageList(img, maxValue, blockDims):
         h, s, v = RGBtoHSV(avg_r, avg_g, avg_b)
         
         # Scale all to 0, maxValue and convert to int
-        avgLum = int((avgLum / 255) * maxValue)
-        h = int((h / 360) * maxValue)
+        avgLum = int((avgLum / 255.0) * maxValue)
+        h = int((h / 360.0) * maxValue)
         s = int(s * maxValue)
-        v = int((v / 255) * maxValue)
-        avg_r = int((avg_r / 255) * maxValue)
-        avg_g = int((avg_g / 255) * maxValue)
-        avg_b = int((avg_b / 255) * maxValue)
+        v = int((v / 255.0) * maxValue)
+        avg_r = int((avg_r / 255.0) * maxValue)
+        avg_g = int((avg_g / 255.0) * maxValue)
+        avg_b = int((avg_b / 255.0) * maxValue)
         
         # We store the original index and avg together as a tuple, 
         # because we will need to calculate the coordinates of where this 
@@ -260,7 +260,7 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
     # Sort based on the second element of the tuple, i.e. the hue
     srcList.sort(key=lambda tup: tup[1])
     destList.sort(key=lambda tup: tup[1])
-            
+                
     # Create a coordinate lookup list based on whether the hdr option is on or 
     # off. If off, we look up the corresponding memory block using the actual 
     # luminance value of the portrait block. This can mean that not all memory 
