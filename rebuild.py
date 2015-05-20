@@ -125,8 +125,8 @@ def calculateSrcBlockSize(img):
     cols = aspect * rows
     rows = round(rows)
     cols = round(cols)
-    x = int(img.size[0] / rows)
-    y = int(img.size[1] / cols)
+    x = int(img.size[0] / cols)
+    y = int(img.size[1] / rows)
     return (x, y)
 
 def buildImageList(img, maxValue, blockDims):
@@ -380,7 +380,7 @@ if __name__ == '__main__':
     destBlockSize = (args['blockSize'], args['blockSize'])
     srcDictList = buildImageList(images[0], 255, srcBlockSize)
     destDictList = buildImageList(images[1], len(srcDictList), destBlockSize)
-    
+        
     # Pack up the sizes we'll need to pass to the output image builder
     sizeDict = {}
     sizeDict['blockSize'] = args['blockSize']
