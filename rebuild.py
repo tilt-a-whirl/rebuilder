@@ -238,18 +238,22 @@ def buildOutputImage(images, lookups, sizeDict, hdr, alg):
     srcList = lookups[0]
     destList = lookups[1]
     
-    # Create and build an output file that is the same size as the original 
-    # portrait file
-    outfile = Image.new("RGB", (dest.size[0], dest.size[1]))
-    
     # Calculate some block sizes and counts
     srcBlockSizeX = sizeDict['srcBlockSizeX']
     srcBlockSizeY = sizeDict['srcBlockSizeY']
     blockSize = sizeDict['blockSize']
     srcNumBlocksX = int(src.size[0] / srcBlockSizeX)
     destNumBlocksX = int(dest.size[0] / blockSize)
+    destNumBlocksY = int(dest.size[1] / blockSize)
     destBlockSizeX = blockSize
     destBlockSizeY = blockSize
+    outputSizeX = destNumBlocksX * blockSize
+    outputSizeY = destNumBlocksY * blockSize
+    
+    # Create and build an output file that is the size of the number of rows
+    # and columns of the destination file with the given block size. Should be
+    # pretty close to the original size.
+    outfile = Image.new("RGB", (outputSizeX, outputSizeY))
         
     srcNumBlocks = len(srcList)
     destNumBlocks = len(destList)
