@@ -196,80 +196,63 @@ def buildImageList(img, maxValue, blockDims):
     # Return the list
     return avgList
 
-def buildOutputImage(src, dest, blockSize, hdr, alg):
+def buildAverageLUT(dictList, alg):
+    """
+    Builds a lookup table from calculated averages
+    """
+    avgLUT = []
+    for i in range(len(dictList)):
+        alg_dict = dictList[i]
+        alg_sum = 0.0
+        if ('l' in alg):
+            alg_sum += alg_dict['l']
+        if ('h' in alg):
+            alg_sum += alg_dict['h']
+        if ('s' in alg):
+            alg_sum += alg_dict['s']
+        if ('v' in alg):
+            alg_sum += alg_dict['v']
+        if ('r' in alg):
+            alg_sum += alg_dict['r']
+        if ('g' in alg):
+            alg_sum += alg_dict['g']
+        if ('b' in alg):
+            alg_sum += alg_dict['b']
+        
+        avg = int(alg_sum / len(alg))   
+        avgLUT.append((i, avg))
+        
+    # Sort based on the second element of the tuple, i.e. the alg type
+    avgLUT.sort(key=lambda tup: tup[1])
+        
+    return avgLUT
+
+def buildOutputImage(images, lookups, sizeDict, hdr, alg):
     """
     Builds output image
     """
+    # Expand tuples
+    src = images[0]
+    dest = images[1]
+    
+    srcList = lookups[0]
+    destList = lookups[1]
+    
     # Create and build an output file that is the same size as the original 
     # portrait file
     outfile = Image.new("RGB", (dest.size[0], dest.size[1]))
     
     # Calculate some block sizes and counts
-    srcBlockSizeX, srcBlockSizeY = calculateSrcBlockSize(src)
+    srcBlockSizeX = sizeDict['srcBlockSizeX']
+    srcBlockSizeY = sizeDict['srcBlockSizeY']
+    blockSize = sizeDict['blockSize']
     srcNumBlocksX = int(src.size[0] / srcBlockSizeX)
     destNumBlocksX = int(dest.size[0] / blockSize)
-    destNumBlocksY = int(dest.size[1] / blockSize)
     destBlockSizeX = blockSize
     destBlockSizeY = blockSize
         
-    srcDictList = buildImageList(src, 255, (srcBlockSizeX, srcBlockSizeY))
-    srcNumBlocks = len(srcDictList)
-    
-    destDictList = buildImageList(dest, srcNumBlocks, \
-                                  (destBlockSizeX, destBlockSizeY))
-        
-    # Grab the number of blocks in the destination image because we'll be using 
-    # this over and over
-    destNumBlocks = len(destDictList)
-        
-    # Average together elements of the tuples based on the algorithm string
-    srcList = []
-    destList = []
-    for i in range(srcNumBlocks):
-        s_dict = srcDictList[i]
-        s_sum = 0
-        if ('l' in alg):
-            s_sum += s_dict['l']
-        if ('h' in alg):
-            s_sum += s_dict['h']
-        if ('s' in alg):
-            s_sum += s_dict['s']
-        if ('v' in alg):
-            s_sum += s_dict['v']
-        if ('r' in alg):
-            s_sum += s_dict['r']
-        if ('g' in alg):
-            s_sum += s_dict['g']
-        if ('b' in alg):
-            s_sum += s_dict['b']
-            
-        s_avg = int(s_sum / len(alg))
-        srcList.append((i, s_avg))
-        
-    for i in range(destNumBlocks):
-        d_dict = destDictList[i]
-        d_sum = 0
-        if ('l' in alg):
-            d_sum += d_dict['l']
-        if ('h' in alg):
-            d_sum += d_dict['h']
-        if ('s' in alg):
-            d_sum += d_dict['s']
-        if ('v' in alg):
-            d_sum += d_dict['v']
-        if ('r' in alg):
-            d_sum += d_dict['r']
-        if ('g' in alg):
-            d_sum += d_dict['g']
-        if ('b' in alg):
-            d_sum += d_dict['b']
-        
-        d_avg = int(d_sum / len(alg))   
-        destList.append((i, d_avg))    
-            
-    # Sort based on the second element of the tuple, i.e. the hue
-    srcList.sort(key=lambda tup: tup[1])
-    destList.sort(key=lambda tup: tup[1])
+    srcNumBlocks = len(srcList)
+    destNumBlocks = len(destList)
                 
     # Create a coordinate lookup list based on whether the hdr option is on or 
     # off. If off, we look up the corresponding memory block using the actual 
@@ -280,26 +263,24 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
     # portrait block. Actual luminance values will not correspond to indices 
     # in the memory list in this case, but this ensures that each block in the 
     # memory list will be used.
-    coordList = []                    
-    if (hdr):
-        scale = 1.0 / destNumBlocks * srcNumBlocks
-        for i in range(destNumBlocks):
-            j = int(scale * i)
-            coordList.append((srcList[j][0], destList[i][0]))
-           
-    else:
-        for i in range(destNumBlocks):
-            j = int(destList[i][1])
-            coordList.append((srcList[j][0], destList[i][0]))
-
-    for i in range(destNumBlocks):
+    scale = 1.0 / destNumBlocks * srcNumBlocks
     
-        # Grab the source and destination list indices
-        source_idx, dest_idx = coordList[i]
+    # These multipliers make it possible for us to avoid an if statement 
+    # inside the loop. If hdr, multiply the 'scale * i' assignment by 1 and
+    # the other by 0, otherwise the opposite. That way we only get one value
+    # or the other.
+    scale_mult = int(hdr)
+    dest_mult = int(not hdr)
+    
+    for i in range(destNumBlocks):
+        j = (int(scale * i) * scale_mult) + (int(destList[i][1]) * dest_mult)
         
-        # Calculate the source block coordinates
-        start_x = int(source_idx % srcNumBlocksX) * srcBlockSizeX
-        start_y = int(source_idx / srcNumBlocksX) * srcBlockSizeY
+        # Grab the source and destination list indices
+        src_idx = srcList[j][0]
+        dest_idx = destList[i][0]
+        
+        start_x = int(src_idx % srcNumBlocksX) * srcBlockSizeX
+        start_y = int(src_idx / srcNumBlocksX) * srcBlockSizeY
         end_x = start_x + srcBlockSizeX
         end_y = start_y + srcBlockSizeY
         
@@ -324,15 +305,18 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
         start_y = (dest_idx / destNumBlocksX) * destBlockSizeY
         
         # Paste the memory block into the correct coordinates of the output file
-        outfile.paste(srcBlock, (start_x, start_y)) 
+        outfile.paste(srcBlock, (start_x, start_y))
         
     return outfile
 
-def saveOutputImage(outfile, srcFile, destFile, hdr, alg, size):
+def saveOutputImage(outfile, args, hdr, alg):
     """
     Saves the output image
     """
     # Save the final image
+    srcFile = args['src']
+    destFile = args['dest']
+    size = str(args['blockSize'])
     head, tail = os.path.split(srcFile)
     sfile, ext = os.path.splitext(tail)
     head, tail = os.path.split(destFile)
@@ -340,7 +324,7 @@ def saveOutputImage(outfile, srcFile, destFile, hdr, alg, size):
     directory = "output/"
     if not os.path.exists(directory):
         os.makedirs(directory)
-    outfileName = directory + dfile + "_" + sfile + "_" + str(size) + "_" + alg
+    outfileName = directory + dfile + "_" + sfile + "_" + size + "_" + alg
     if hdr:
         outfileName = outfileName + '_hdr.tif'
     else:
@@ -389,14 +373,30 @@ if __name__ == '__main__':
     else:
         algs = buildAlgorithmList(opts)
     
-    src, dest = loadImages(args['src'], args['dest'])
+    images = loadImages(args['src'], args['dest'])
+    
+    # Build the image lists only once; they won't change
+    srcBlockSize = calculateSrcBlockSize(images[0])
+    destBlockSize = (args['blockSize'], args['blockSize'])
+    srcDictList = buildImageList(images[0], 255, srcBlockSize)
+    destDictList = buildImageList(images[1], len(srcDictList), destBlockSize)
+    
+    # Pack up the sizes we'll need to pass to the output image builder
+    sizeDict = {}
+    sizeDict['blockSize'] = args['blockSize']
+    sizeDict['srcBlockSizeX'] = srcBlockSize[0]
+    sizeDict['srcBlockSizeY'] = srcBlockSize[1]
     
     for alg in algs:
-        output = buildOutputImage(src, dest, args['blockSize'], False, alg)
-        output_hdr = buildOutputImage(src, dest, args['blockSize'], True, alg)
-        saveOutputImage(output, args['src'], args['dest'], False, alg, \
-                        args['blockSize'])
-        saveOutputImage(output_hdr, args['src'], args['dest'], True, alg, \
-                        args['blockSize'])
+        # Lookups change for each algorithm
+        srcList = buildAverageLUT(srcDictList, alg)
+        destList = buildAverageLUT(destDictList, alg)
+        lookups = (srcList, destList)
+        # Create the output based on the current algorithm
+        output = buildOutputImage(images, lookups, sizeDict, False, alg)
+        output_hdr = buildOutputImage(images, lookups, sizeDict, True, alg)
+        # Save the output images
+        saveOutputImage(output, args, False, alg)
+        saveOutputImage(output_hdr, args, True, alg)
             
     print ("Finished!")
