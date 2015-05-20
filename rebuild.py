@@ -19,7 +19,8 @@ will be a TIFF. Note: This has only been tested with TIFF files as input.
 
 When a type is not provided, images are processed using luminance (l), hue (h), 
 saturation (s), value (v), red (r), green (g), blue (b), and all combinations,
-resulting in 254 unique combinations (and output files).
+resulting in 254 unique combinations (and output files), 508 including hdr 
+versions of each.
 
 """
 
@@ -150,22 +151,31 @@ def buildImageList(img, maxValue, blockDims):
         block = img.crop(blockBox)
         colors = block.getcolors(blockSize)
         rsum, gsum, bsum = 0, 0, 0
+        hsum, ssum, vsum = 0.0, 0.0, 0.0
         for item in colors:
-            rsum += item[1][0] * item[0]
-            gsum += item[1][1] * item[0]
-            bsum += item[1][2] * item[0]  
-        avg_r = int(rsum / blockSize)
-        avg_g = int(gsum / blockSize)
-        avg_b = int(bsum / blockSize)
-        avgLum = (avg_r * 0.299) + (avg_g * 0.587) + (avg_b * 0.114)
-        
-        h, s, v = RGBtoHSV(avg_r, avg_g, avg_b)
+            r = item[1][0]
+            g = item[1][1]
+            b = item[1][2]
+            rsum += r * item[0]
+            gsum += g * item[0]
+            bsum += b * item[0] 
+            h, s, v = RGBtoHSV(r, g, b)  # slower here but more accurate
+            hsum += h * item[0]
+            ssum += s * item[0]
+            vsum += v * item[0]
+        avg_r = rsum / float(blockSize)
+        avg_g = gsum / float(blockSize)
+        avg_b = bsum / float(blockSize)
+        avg_l = (avg_r * 0.299) + (avg_g * 0.587) + (avg_b * 0.114)
+        avg_h = hsum / float(blockSize)
+        avg_s = ssum / float(blockSize)
+        avg_v = vsum / float(blockSize)
         
         # Scale all to 0, maxValue and convert to int
-        avgLum = int((avgLum / 255.0) * maxValue)
-        h = int((h / 360.0) * maxValue)
-        s = int(s * maxValue)
-        v = int((v / 255.0) * maxValue)
+        avg_l = int((avg_l / 255.0) * maxValue)
+        avg_h = int((avg_h / 360.0) * maxValue)
+        avg_s = int(avg_s * maxValue)
+        avg_v = int((avg_v / 255.0) * maxValue)
         avg_r = int((avg_r / 255.0) * maxValue)
         avg_g = int((avg_g / 255.0) * maxValue)
         avg_b = int((avg_b / 255.0) * maxValue)
@@ -174,10 +184,10 @@ def buildImageList(img, maxValue, blockDims):
         # because we will need to calculate the coordinates of where this 
         # block originally came from
         avgDict = {}
-        avgDict['l'] = avgLum
-        avgDict['h'] = h
-        avgDict['s'] = s
-        avgDict['v'] = v
+        avgDict['l'] = avg_l
+        avgDict['h'] = avg_h
+        avgDict['s'] = avg_s
+        avgDict['v'] = avg_v
         avgDict['r'] = avg_r
         avgDict['g'] = avg_g
         avgDict['b'] = avg_b
@@ -348,7 +358,7 @@ def RGBtoHSV(r, g, b):
     delta = maxRGB - minRGB
     
     if (maxRGB > 0):
-        s = delta / maxRGB
+        s = delta / float(maxRGB)
     else:                       # r = g = b = 0 ; s = 0, h is undefined
         s = 0.0
         h = 0.0
@@ -357,11 +367,11 @@ def RGBtoHSV(r, g, b):
     if (minRGB == maxRGB):
         h = 0.0
     elif (r == maxRGB):
-        h = (g - b) / delta            # between yellow & magenta
+        h = (g - b) / float(delta)            # between yellow & magenta
     elif (g == maxRGB):
-        h = 2 + (b - r) / delta        # between cyan & yellow
+        h = 2 + (b - r) / float(delta)        # between cyan & yellow
     else:
-        h = 4 + (r - g) / delta        # between magenta & cyan
+        h = 4 + (r - g) / float(delta)        # between magenta & cyan
     h *= 60.0                          # degrees
     if (h < 0.0):  
         h += 360.0
