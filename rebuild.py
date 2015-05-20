@@ -5,22 +5,22 @@ rebuild.py by Amy Tucker
 
 This rebuilds one image using the tiles of another image. It accepts two source 
 images. Usage:
-    rebuild.py srcFile destFile [-s blockSize -t]
+    rebuild.py srcFile destFile [-s blockSize -t type]
     -s blockSize: Size of tiles in destination image (resolution)
-    -t: Test mode (luminance only)
+    -t: Create one single type (l, h, s, v, r, g, or b)
     
 The output will be saved to the directory from which the script is called, in
 a folder named 'output.' The output file name will be in the form 
 destBaseName_srcBaseName_type.tif. For example, if the source image is called 
 backyard.tif, and the destination image is called me.tif, the block size is 30 
-and it's in test mode (luminance only), the final output will be named 
-me_backyard_30_l.tif and me_backyard_30_l_hdr.tiff. No matter the input file 
-formats, the output will be a TIFF. Note: This has only been tested with TIFF 
-files as input.  
+and the type is luminance, the final output will be named me_backyard_30_l.tif 
+and me_backyard_30_l_hdr.tiff. No matter the input file formats, the output 
+will be a TIFF. Note: This has only been tested with TIFF files as input.  
 
-When not in test mode, images are processed using luminance (l), hue (h), 
-saturation (s), value (v), red (r), green (g), blue (b), or any combination,
-resulting in 254 possible combinations (and output files).
+When a type is not provided, images are processed using luminance (l), hue (h), 
+saturation (s), value (v), red (r), green (g), blue (b), and all combinations,
+resulting in 254 unique combinations (and output files), 508 including hdr 
+versions of each.
 
 """
 
@@ -42,18 +42,30 @@ def processArgs():
     p = OptionParser(usage=usage)
     p.add_option("-s", action="store", dest="blockSize", \
                  help="Block size in pixels (def = 30)")
-    p.add_option("-t", action="store_true", dest="test", \
-                 help="Test mode (luminance only)")
+    p.add_option("-t", action="store", dest="type", \
+                 help="Type (l, h, s, v, r, g or b - optional)")
     
-    p.set_defaults(blockSize=30)
-    p.set_defaults(test=False)
+    p.set_defaults(blockSize = 30)
+    p.set_defaults(type = '')
     
     opts, args = p.parse_args()
     
     if (len(args) != 2):
         stderr.write("Wrong number of arguments\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t]\n")
+        stderr.write("[-s blockSize -t type]\n")
+        raise SystemExit(1)
+    
+    if (len(opts.type) > 1):
+        stderr.write("Type only takes one parameter\n")
+        stderr.write("Usage: %s srcImage destImage " % argv[0])
+        stderr.write("[-s blockSize -t type]\n")
+        raise SystemExit(1)
+    
+    if (opts.type != '' and opts.type not in 'lhsvrgb'):
+        stderr.write("Type only takes l, h, s, v, r, g, or b\n")
+        stderr.write("Usage: %s srcImage destImage " % argv[0])
+        stderr.write("[-s blockSize -t type]\n")
         raise SystemExit(1)
     
     # Set filenames and additional options
@@ -61,19 +73,19 @@ def processArgs():
     rebld_args['dest'] = args[1]
     
     rebld_args['blockSize'] = int(opts.blockSize)
-    rebld_args['test'] = opts.test
+    rebld_args['type'] = opts.type
         
     # Check for valid files. PIL will check that they're valid images.
     if (not os.path.isfile(rebld_args['src'])):
         stderr.write("Invalid source file\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t]\n")
+        stderr.write("[-s blockSize -t type]\n")
         raise SystemExit(1)
     
     if (not os.path.isfile(rebld_args['dest'])):
         stderr.write("Invalid destination file\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t]\n")
+        stderr.write("[-s blockSize -t type]\n")
         raise SystemExit(1)
     
     return (rebld_args)
@@ -139,34 +151,43 @@ def buildImageList(img, maxValue, blockDims):
         block = img.crop(blockBox)
         colors = block.getcolors(blockSize)
         rsum, gsum, bsum = 0, 0, 0
+        hsum, ssum, vsum = 0.0, 0.0, 0.0
         for item in colors:
-            rsum += item[1][0] * item[0]
-            gsum += item[1][1] * item[0]
-            bsum += item[1][2] * item[0]            
-        avg_r = int(rsum / blockSize)
-        avg_g = int(gsum / blockSize)
-        avg_b = int(bsum / blockSize)
-        avgLum = (avg_r * 0.299) + (avg_g * 0.587) + (avg_b * 0.114)
-        
-        h, s, v = RGBtoHSV(avg_r, avg_g, avg_b)
+            r = item[1][0]
+            g = item[1][1]
+            b = item[1][2]
+            rsum += r * item[0]
+            gsum += g * item[0]
+            bsum += b * item[0] 
+            h, s, v = RGBtoHSV(r, g, b)  # slower here but more accurate
+            hsum += h * item[0]
+            ssum += s * item[0]
+            vsum += v * item[0]
+        avg_r = rsum / float(blockSize)
+        avg_g = gsum / float(blockSize)
+        avg_b = bsum / float(blockSize)
+        avg_l = (avg_r * 0.299) + (avg_g * 0.587) + (avg_b * 0.114)
+        avg_h = hsum / float(blockSize)
+        avg_s = ssum / float(blockSize)
+        avg_v = vsum / float(blockSize)
         
         # Scale all to 0, maxValue and convert to int
-        avgLum = int((avgLum / 255) * maxValue)
-        h = int((h / 360) * maxValue)
-        s = int(s * maxValue)
-        v = int((v / 255) * maxValue)
-        avg_r = int((avg_r / 255) * maxValue)
-        avg_g = int((avg_g / 255) * maxValue)
-        avg_b = int((avg_b / 255) * maxValue)
+        avg_l = int((avg_l / 255.0) * maxValue)
+        avg_h = int((avg_h / 360.0) * maxValue)
+        avg_s = int(avg_s * maxValue)
+        avg_v = int((avg_v / 255.0) * maxValue)
+        avg_r = int((avg_r / 255.0) * maxValue)
+        avg_g = int((avg_g / 255.0) * maxValue)
+        avg_b = int((avg_b / 255.0) * maxValue)
         
         # We store the original index and avg together as a tuple, 
         # because we will need to calculate the coordinates of where this 
         # block originally came from
         avgDict = {}
-        avgDict['l'] = avgLum
-        avgDict['h'] = h
-        avgDict['s'] = s
-        avgDict['v'] = v
+        avgDict['l'] = avg_l
+        avgDict['h'] = avg_h
+        avgDict['s'] = avg_s
+        avgDict['v'] = avg_v
         avgDict['r'] = avg_r
         avgDict['g'] = avg_g
         avgDict['b'] = avg_b
@@ -249,7 +270,7 @@ def buildOutputImage(src, dest, blockSize, hdr, alg):
     # Sort based on the second element of the tuple, i.e. the hue
     srcList.sort(key=lambda tup: tup[1])
     destList.sort(key=lambda tup: tup[1])
-            
+                
     # Create a coordinate lookup list based on whether the hdr option is on or 
     # off. If off, we look up the corresponding memory block using the actual 
     # luminance value of the portrait block. This can mean that not all memory 
@@ -337,7 +358,7 @@ def RGBtoHSV(r, g, b):
     delta = maxRGB - minRGB
     
     if (maxRGB > 0):
-        s = delta / maxRGB
+        s = delta / float(maxRGB)
     else:                       # r = g = b = 0 ; s = 0, h is undefined
         s = 0.0
         h = 0.0
@@ -346,11 +367,11 @@ def RGBtoHSV(r, g, b):
     if (minRGB == maxRGB):
         h = 0.0
     elif (r == maxRGB):
-        h = (g - b) / delta            # between yellow & magenta
+        h = (g - b) / float(delta)            # between yellow & magenta
     elif (g == maxRGB):
-        h = 2 + (b - r) / delta        # between cyan & yellow
+        h = 2 + (b - r) / float(delta)        # between cyan & yellow
     else:
-        h = 4 + (r - g) / delta        # between magenta & cyan
+        h = 4 + (r - g) / float(delta)        # between magenta & cyan
     h *= 60.0                          # degrees
     if (h < 0.0):  
         h += 360.0
@@ -363,8 +384,8 @@ if __name__ == '__main__':
     """    
     args = processArgs()
     opts = ['l', 'h', 's', 'v', 'r', 'g', 'b']
-    if (args['test']):
-        algs = ['l']
+    if (args['type'] != ''):
+        algs = args['type']
     else:
         algs = buildAlgorithmList(opts)
     
