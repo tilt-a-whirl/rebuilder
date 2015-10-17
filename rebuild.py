@@ -383,7 +383,7 @@ if __name__ == '__main__':
     srcBlockSize = calculateSrcBlockSize(images[0])
     destBlockSize = (args['blockSize'], args['blockSize'])
     srcDictList = buildImageList(images[0], 255, srcBlockSize)
-    destDictList = buildImageList(images[1], len(srcDictList), destBlockSize)
+    destDictList = buildImageList(images[1], len(srcDictList)-1, destBlockSize)
         
     # Pack up the sizes we'll need to pass to the output image builder
     sizeDict = {}
