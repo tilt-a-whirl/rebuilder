@@ -36,6 +36,7 @@ versions of each.
 
 import rebuilderutils as rutils
 from optparse import OptionParser
+from PIL import Image
 from sys import stderr, argv
 import os.path
 
@@ -113,39 +114,41 @@ if __name__ == '__main__':
         algs = args['type']
     else:
         algs = rutils.buildAlgorithmList(opts)
-    
-    # Load the source and destination images
-    images = rutils.loadImages(args['src'], args['dest'])
-    
-    # Build the image lists only once; they won't change. Source image block
-    # size needs to be calculated based on dividing the image into 256 blocks.
-    srcBlockSize = rutils.calculateSrcBlockSize(images[0])
-    
-    # Destination block size (base) is user-entered blockSize. Variations will
-    # be added later for rows and columns if non-uniform is specified.
-    destBlockSize = (args['blockSize'], args['blockSize'])
-    
-    # Image list from source is straightforward
-    srcDictList = rutils.buildImageList(images[0], 255, srcBlockSize)
-    destDictList = rutils.buildImageList(images[1], len(srcDictList)-1, 
-                                  destBlockSize, args['isNonUniform'])
-        
-    # Pack up the sizes we'll need to pass to the output image builder
-    sizeDict = {}
-    sizeDict['blockSize'] = args['blockSize']
-    sizeDict['srcBlockSizeX'] = srcBlockSize[0]
-    sizeDict['srcBlockSizeY'] = srcBlockSize[1]
-    
-    for alg in algs:
-        # Lookups change for each algorithm
-        srcList = rutils.buildAverageLUT(srcDictList, alg)
-        destList = rutils.buildAverageLUT(destDictList, alg)
-        lookups = (srcList, destList)
-        # Create the output based on the current algorithm
-        output = rutils.buildOutputImage(images, lookups, sizeDict, False, alg)
-        output_hdr = rutils.buildOutputImage(images, lookups, sizeDict, True, alg)
-        # Save the output images
-        rutils.saveOutputImage(output, args, False, alg)
-        rutils.saveOutputImage(output_hdr, args, True, alg)
             
+    # Open the images
+    source = rutils.SourceImage(args['src'])
+    dest = rutils.SourceImage(args['dest'])
+    
+    # Calculate internal data based on whether this is a source or
+    # destination image. Passing the user-entered blockSize will flag the
+    # image as the destination image.
+    source.calculateBlockVars(args['isNonUniform'])
+    dest.calculateBlockVars(args['blockSize'], args['isNonUniform'])
+    
+    # Get the number of blocks in the source image. We'll use this to
+    # send a maxValue when we build the average list.
+    srcRows, srcCols = source.getRowsCols()
+    maxValue = (srcRows * srcCols) - 1
+    
+    # Average lists are straightforward
+    source.buildAverageList(maxValue, args['isNonUniform'])
+    dest.buildAverageList(maxValue, args['isNonUniform'])
+    
+    for atype in algs:
+        # Lookups change for each algorithm
+        source.buildAverageLUT(atype)
+        dest.buildAverageLUT(atype)
+        
+        # Create the output based on the current algorithm
+        output = rutils.OutputImage(args, atype)
+        output_hdr = rutils.OutputImage(args, atype, True)
+        
+        # Build hdr and non-hdr versions
+        output.buildImage(source, dest)
+        output_hdr.buildImage(source, dest)
+    
+        # Save the output images
+        output.saveImage()
+        output_hdr.saveImage()
+                    
     print ("Finished!")
