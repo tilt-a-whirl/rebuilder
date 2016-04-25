@@ -5,21 +5,31 @@ rebuild.py by Amy Tucker
 
 This rebuilds one image using the tiles of another image. It accepts two source 
 images. Usage:
-    rebuild.py srcFile destFile [-s blockSize -t type]
-    -s blockSize: Size of tiles in destination image (resolution)
-    -t: Create one single type (l, h, s, v, r, g, or b)
+    rebuild.py srcFile destFile [-s blockSize -t type -n]
+    -s blockSize: Size of tiles in destination image (default = 30)
+    -t type: Create one single type (l, h, s, v, r, g, or b) (default = all)
+    -n: Non-uniform block size, is average of blockSize (default = False)
     
 The output will be saved to the directory from which the script is called, in
 a folder named 'output.' The output file name will be in the form 
-destBaseName_srcBaseName_type.tif. For example, if the source image is called 
-backyard.tif, and the destination image is called me.tif, the block size is 30 
+destBaseName_srcBaseName_size_type.tif. For example, if the source image is 
+backyard.tif, and the destination image is me.tif, the block size is 30 
 and the type is luminance, the final output will be named me_backyard_30_l.tif 
-and me_backyard_30_l_hdr.tiff. No matter the input file formats, the output 
-will be a TIFF. Note: This has only been tested with TIFF files as input.  
+and me_backyard_30_l_hdr.tif. If non-uniform blocks are used, the size will
+be followed by 'n,' as in me_backyard_30n_l_hdr.tif. No matter the input file 
+formats, the output will be a TIFF. Note: Choose the best compression possible
+for your input files, or none at all. See PIL documentation for supported
+input file formats.
+
+A note on non-uniform blocks: The sizes of the blocks are determined when the
+script launches, so all images produced by a single run will show the same
+block size pattern, but different runs will each be different from each other.
+Setting block size will still influence the overall resolution of the pattern,
+as variations are based on a percentage of the original block size.
 
 When a type is not provided, images are processed using luminance (l), hue (h), 
 saturation (s), value (v), red (r), green (g), blue (b), and all combinations,
-resulting in 254 unique combinations (and output files), 508 including hdr 
+resulting in 254 unique combinations (and output files) -- 508 including hdr 
 versions of each.
 
 """
@@ -44,28 +54,31 @@ def processArgs():
                  help="Block size in pixels (def = 30)")
     p.add_option("-t", action="store", dest="type", \
                  help="Type (l, h, s, v, r, g or b - optional)")
+    p.add_option("-n", action="store_true", dest="isNonUniform", \
+                 help="Make block size non-uniform - optional")
     
     p.set_defaults(blockSize = 30)
     p.set_defaults(type = '')
+    p.set_defaults(isNonUniform = False)
     
     opts, args = p.parse_args()
     
     if (len(args) != 2):
         stderr.write("Wrong number of arguments\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t type]\n")
+        stderr.write("[-s blockSize -t type -n]\n")
         raise SystemExit(1)
     
     if (len(opts.type) > 1):
         stderr.write("Type only takes one parameter\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t type]\n")
+        stderr.write("[-s blockSize -t type -n]\n")
         raise SystemExit(1)
     
     if (opts.type != '' and opts.type not in 'lhsvrgb'):
         stderr.write("Type only takes l, h, s, v, r, g, or b\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t type]\n")
+        stderr.write("[-s blockSize -t type -n]\n")
         raise SystemExit(1)
     
     # Set filenames and additional options
@@ -74,6 +87,7 @@ def processArgs():
     
     rebld_args['blockSize'] = int(opts.blockSize)
     rebld_args['type'] = opts.type
+    rebld_args['isNonUniform'] = opts.isNonUniform
         
     # Check for valid files. PIL will check that they're valid images.
     if (not os.path.isfile(rebld_args['src'])):
@@ -321,6 +335,7 @@ def saveOutputImage(outfile, args, hdr, alg):
     srcFile = args['src']
     destFile = args['dest']
     size = str(args['blockSize'])
+    isNonUniform = args['isNonUniform']
     head, tail = os.path.split(srcFile)
     sfile, ext = os.path.splitext(tail)
     head, tail = os.path.split(destFile)
@@ -328,7 +343,10 @@ def saveOutputImage(outfile, args, hdr, alg):
     directory = "output/"
     if not os.path.exists(directory):
         os.makedirs(directory)
-    outfileName = directory + dfile + "_" + sfile + "_" + size + "_" + alg
+    outfileName = directory + dfile + "_" + sfile + "_" + size
+    if isNonUniform:
+        outfileName = outfileName + 'n'
+    outfileName = outfileName + "_" + alg
     if hdr:
         outfileName = outfileName + '_hdr.tif'
     else:
