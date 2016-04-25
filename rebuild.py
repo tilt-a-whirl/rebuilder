@@ -106,7 +106,8 @@ def processArgs():
 if __name__ == '__main__':
     """ 
     Main function
-    """    
+    """
+    
     # Process arguments and build our list of algorithms, if necessary.
     args = processArgs()
     opts = ['l', 'h', 's', 'v', 'r', 'g', 'b']
@@ -116,14 +117,14 @@ if __name__ == '__main__':
         algs = rutils.buildAlgorithmList(opts)
             
     # Open the images
-    source = rutils.SourceImage(args['src'])
-    dest = rutils.SourceImage(args['dest'])
+    source = rutils.SourceImage(args['src'], args['isNonUniform'])
+    dest = rutils.SourceImage(args['dest'], args['isNonUniform'])
     
     # Calculate internal data based on whether this is a source or
     # destination image. Passing the user-entered blockSize will flag the
     # image as the destination image.
-    source.calculateBlockVars(args['isNonUniform'])
-    dest.calculateBlockVars(args['blockSize'], args['isNonUniform'])
+    source.calculateBlockVars()
+    dest.calculateBlockVars(args['blockSize'])
     
     # Get the number of blocks in the source image. We'll use this to
     # send a maxValue when we build the average list.
@@ -131,8 +132,8 @@ if __name__ == '__main__':
     maxValue = (srcRows * srcCols) - 1
     
     # Average lists are straightforward
-    source.buildAverageList(maxValue, args['isNonUniform'])
-    dest.buildAverageList(maxValue, args['isNonUniform'])
+    source.buildAverageList(maxValue)
+    dest.buildAverageList(maxValue)
     
     for atype in algs:
         # Lookups change for each algorithm
