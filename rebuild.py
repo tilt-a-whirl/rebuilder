@@ -5,11 +5,12 @@ rebuild.py by Amy Tucker
 
 This rebuilds one image using the tiles of another image. It accepts two source 
 images. Usage:
-    rebuild.py srcFile destFile [-s blockSize -t type -n]
+    rebuild.py srcFile destFile [-s blockSize -t type -n -d]
     -s blockSize: Size of tiles in destination image (default = 30)
     -t type: Create one single type (l, h, s, v, r, g, or b) or combo of any
              number of valid types (default = lhsvrgb)
-    -n: Non-uniform block size, is average of blockSize (default = False)
+    -n: non-uniform block size, averages to blockSize (default = False)
+    -d: detail resolution (ignores non-uniform if set) (default = False)
     
 The output will be saved to the directory from which the script is called, in
 a folder named 'output.' The output file name will be in the form 
@@ -17,16 +18,20 @@ destBaseName_srcBaseName_size_type.tif. For example, if the source image is
 backyard.tif, and the destination image is me.tif, the block size is 30 
 and the type is luminance, the final output will be named me_backyard_30_l.tif 
 and me_backyard_30_l_hdr.tif. If non-uniform blocks are used, the size will
-be followed by 'n,' as in me_backyard_30n_l_hdr.tif. No matter the input file 
-formats, the output will be a TIFF. Note: Choose the best compression possible
-for your input files, or none at all. See PIL documentation for supported
-input file formats.
+be followed by 'n,' as in me_backyard_30n_l_hdr.tif. If the detail option is
+specified, non-uniform block size will be ignored if set, and the file name
+will appear as me_backyard_30d_l_hdr.tif. No matter the input file formats,
+the output will be a TIFF. Note: Choose the best compression possible for
+your input files, or none at all. See PIL documentation for supported input
+file formats.
 
 A note on non-uniform blocks: The sizes of the blocks are determined when the
 script launches, so all images produced by a single run will show the same
 block size pattern, but different runs will each be different from each other.
 Setting block size will still influence the overall resolution of the pattern,
 as variations are based on a percentage of the original block size.
+
+If detail is specified, non-uniform flag will be ignored if set.
 
 About types: You can specify one single type (such as 'l') or a combination
 of types ('lgv'). You will get each separate type plus all combinations of
@@ -58,10 +63,13 @@ def processArgs():
                  help="Type (l, h, s, v, r, g, b or combination - optional)")
     p.add_option("-n", action="store_true", dest="isNonUniform", 
                  help="Make block size non-uniform - optional")
+    p.add_option("-d", action="store_true", dest="isDetail",
+                 help="Use detail resolution - optional")
     
     p.set_defaults(blockSize = 30)
     p.set_defaults(type = '')
     p.set_defaults(isNonUniform = False)
+    p.set_defaults(isDetail = False)
     
     opts, args = p.parse_args()
     
@@ -81,6 +89,10 @@ def processArgs():
                 typeDict[t] = 1
         else:
             stderr.write("Invalid type %s ignored\n" % t)
+            
+    # Check if detail flag overrides non-uniform flag
+    if opts.isDetail and opts.isNonUniform:
+        stderr.write("Detail is specified; non-uniform flag ignored.\n")
     
     # Set filenames and additional options
     rebld_args['src'] = args[0]
@@ -88,7 +100,11 @@ def processArgs():
     
     rebld_args['blockSize'] = int(opts.blockSize)
     rebld_args['type'] = typeDict.keys()
-    rebld_args['isNonUniform'] = opts.isNonUniform
+    if opts.isDetail:
+        rebld_args['isNonUniform'] = False
+    else:
+        rebld_args['isNonUniform'] = opts.isNonUniform
+    rebld_args['isDetail'] = opts.isDetail
         
     # Check for valid files. PIL will check that they're valid images.
     if (not os.path.isfile(rebld_args['src'])):
