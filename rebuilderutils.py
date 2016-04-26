@@ -6,15 +6,16 @@ import itertools
 
 class SourceImage(object):
     
-    def __init__(self, filename, isNonUniform=False):
+    def __init__(self, filename, isNonUniform=False, isDetail=False):
         """
         Init method
         """
         self.image = Image.open(filename)
         self.isNonUniform = isNonUniform
+        self.isDetail = isDetail
         self.blockSize = 0
-        self.blockSizeX = 0
-        self.blockSizeY = 0
+        self.blockWidth = 0
+        self.blockHeight = 0
         self.numRows = 0
         self.numCols = 0
         self.numBlocks = 0
@@ -23,7 +24,9 @@ class SourceImage(object):
         self.avgList = []
         self.avgLUT = []
         
-    def calculateBlockVars(self, userBlockSize=0):
+    def calculateBlockVars(self, userBlockSize=0, 
+                           widthOverride=0, 
+                           heightOverride=0):
         """
         For source image: Calculates block size for src image of any size, to 
         be divided evenly into 256 square-ish tiles (as close as possible). May 
@@ -32,14 +35,18 @@ class SourceImage(object):
         If userBlockSize > 0, variable only applies to destination image. 
         For dest image: Calculates block vars based on user-input block size.
         """
-        sizeX = self.image.size[0]
-        sizeY = self.image.size[1]
+        width = self.image.size[0]
+        height = self.image.size[1]
         
         if userBlockSize > 0:  # if dest image
-            self.blockSizeX = userBlockSize
-            self.blockSizeY = userBlockSize
-            self.numCols = int(sizeX / userBlockSize)
-            self.numRows = int(sizeY / userBlockSize)
+            self.blockWidth = userBlockSize
+            self.blockHeight = userBlockSize
+            if widthOverride > 0 and heightOverride > 0:
+                self.numCols = int(widthOverride / userBlockSize)
+                self.numRows = int(heightOverride / userBlockSize)
+            else:
+                self.numCols = int(width / userBlockSize)
+                self.numRows = int(height / userBlockSize)
             # Build a list of increments for block width and height. If we're
             # not using uneven blocks, we'll just set them all to 0.
             if self.isNonUniform:
@@ -67,13 +74,13 @@ class SourceImage(object):
 
         else: # if source image
             # 1024 / 512 = 2
-            aspect = float(sizeX) / float(sizeY)
+            aspect = float(width) / float(height)
             rows = sqrt(256.0 / aspect)
             cols = aspect * rows
             rows = int(round(rows))
             cols = int(round(cols))
-            self.blockSizeX = int(sizeX / cols)
-            self.blockSizeY = int(sizeY / rows)
+            self.blockWidth = int(width / cols)
+            self.blockHeight = int(height / rows)
             self.numRows = rows
             self.numCols = cols
             # Increments aren't used on the source image. Create the lists one
@@ -83,7 +90,7 @@ class SourceImage(object):
             self.colList = [0] * (self.numCols + 1)
                  
         self.numBlocks = self.numRows * self.numCols
-        self.blockSize = self.blockSizeX * self.blockSizeY     
+        self.blockSize = self.blockWidth * self.blockHeight     
         
     def buildAverageList(self, maxValue):
         """
@@ -94,10 +101,10 @@ class SourceImage(object):
         for i in range(self.numBlocks):
             col = int(i % self.numCols)
             row = int(i / self.numCols)
-            start_x = col * self.blockSizeX
-            start_y = row * self.blockSizeY
-            end_x = start_x + self.blockSizeX
-            end_y = start_y + self.blockSizeY
+            start_x = col * self.blockWidth
+            start_y = row * self.blockHeight
+            end_x = start_x + self.blockWidth
+            end_y = start_y + self.blockHeight
             
             # Calculate block uniformity. We have to look at the current
             # value and the next one, which correspond to the start and
@@ -207,10 +214,9 @@ class SourceImage(object):
         """ 
         Returns block size as a tuple. If destination image, this returns
         the user-specified block size in both values, whether or not the
-        blocks are meant to be uniform (so far this is only used for the
-        source image).
+        blocks are meant to be uniform.
         """
-        return (self.blockSizeX, self.blockSizeY)
+        return (self.blockWidth, self.blockHeight)
     
     def getRowsCols(self):
         """
@@ -232,7 +238,7 @@ class SourceImage(object):
                     
 class OutputImage(object):
     
-    def __init__(self, args, atype, is_hdr=False):
+    def __init__(self, args, userBlockSize, atype, is_hdr=False):
         """
         Init method - also creates appropriate output file name.
         """
@@ -240,7 +246,8 @@ class OutputImage(object):
         self.outName = ''
         self.outfile = None
         self.isNonUniform = args['isNonUniform']
-        self.userBlockSize = args['blockSize']
+        self.isDetail = args['isDetail']
+        self.userBlockSize = userBlockSize
         self.is_hdr = is_hdr
         # Build file names for later
         srcFile = args['src']
@@ -272,7 +279,7 @@ class OutputImage(object):
         srcList = sourceImage.getAverageLUT()
         destList = destImage.getAverageLUT()
         
-        srcBlockSizeX, srcBlockSizeY = sourceImage.getBlockSize()
+        srcBlockWidth, srcBlockHeight = sourceImage.getBlockSize()
         srcNumRows, srcNumCols = sourceImage.getRowsCols()
         destNumRows, destNumCols = destImage.getRowsCols()       
         
@@ -320,10 +327,10 @@ class OutputImage(object):
             dest_idx = destList[i][0]
             
             # Calculate the source block bounding box (no size variations)
-            start_x = int(src_idx % srcNumCols) * srcBlockSizeX
-            start_y = int(src_idx / srcNumCols) * srcBlockSizeY
-            end_x = start_x + srcBlockSizeX
-            end_y = start_y + srcBlockSizeY
+            start_x = int(src_idx % srcNumCols) * srcBlockWidth
+            start_y = int(src_idx / srcNumCols) * srcBlockHeight
+            end_x = start_x + srcBlockWidth
+            end_y = start_y + srcBlockHeight
             
             # Grab the source image blocks
             srcBlock = srcImg.crop((start_x, start_y, end_x, end_y))
@@ -353,14 +360,14 @@ class OutputImage(object):
             end_x += colList[col+1]
             start_y += rowList[row]
             end_y += rowList[row+1]
-            destBlockSizeX = end_x - start_x 
-            destBlockSizeY = end_y - start_y
+            destBlockWidth = end_x - start_x 
+            destBlockHeight = end_y - start_y
                 
             # If the dest block size is not equal to the source block size, 
             # resize the source block to be the same size as the dest block
-            if ((srcBlockSizeX != destBlockSizeX) or  
-                (srcBlockSizeY != destBlockSizeY)):
-                srcBlock = srcBlock.resize((destBlockSizeX, destBlockSizeY))
+            if ((srcBlockWidth != destBlockWidth) or  
+                (srcBlockHeight != destBlockHeight)):
+                srcBlock = srcBlock.resize((destBlockWidth, destBlockHeight))
             
             # Paste the memory block into the correct coordinates of the output 
             # file

@@ -58,7 +58,7 @@ def processArgs():
     usage = "Usage: %prog srcImage destImage [options]"
     p = OptionParser(usage=usage)
     p.add_option("-s", action="store", dest="blockSize", 
-                 help="Block size in pixels (def = 30)")
+                 help="Block size in pixels (default = 30)")
     p.add_option("-t", action="store", dest="type", 
                  help="Type (l, h, s, v, r, g, b or combination - optional)")
     p.add_option("-n", action="store_true", dest="isNonUniform", 
@@ -73,11 +73,20 @@ def processArgs():
     
     opts, args = p.parse_args()
     
+    # Check that we have two file names
     if (len(args) != 2):
         stderr.write("Wrong number of arguments\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
         stderr.write("[-s blockSize -t type -n]\n")
         raise SystemExit(1)
+    
+    # Make sure we have a workable block size
+    if opts.blockSize < 8 and opts.isDetail:
+        stderr.write("Block size too small for detail option. Clamping to 8.\n")
+        opts.blockSize = 8
+    elif opts.blockSize < 4:
+        stderr.write("Block size too small. Clamping to 4.\n")
+        opts.blockSize = 4
     
     # Check for duplicate, invalid and extra chars in type string
     typeDict = {}
@@ -93,6 +102,7 @@ def processArgs():
     # Check if detail flag overrides non-uniform flag
     if opts.isDetail and opts.isNonUniform:
         stderr.write("Detail is specified; non-uniform flag ignored.\n")
+        opts.isNonUniform = False
     
     # Set filenames and additional options
     rebld_args['src'] = args[0]
@@ -100,10 +110,7 @@ def processArgs():
     
     rebld_args['blockSize'] = int(opts.blockSize)
     rebld_args['type'] = typeDict.keys()
-    if opts.isDetail:
-        rebld_args['isNonUniform'] = False
-    else:
-        rebld_args['isNonUniform'] = opts.isNonUniform
+    rebld_args['isNonUniform'] = opts.isNonUniform
     rebld_args['isDetail'] = opts.isDetail
         
     # Check for valid files. PIL will check that they're valid images.
@@ -126,9 +133,10 @@ if __name__ == '__main__':
     """ 
     Main function
     """
-    
-    # Process arguments and build our list of algorithms, if necessary.
+    # Process arguments
     args = processArgs()
+    
+    # Build the algorithm list
     opts = 'lhsvrgb'
     if (len(args['type']) == 1):
         algs = args['type'] 
@@ -136,34 +144,77 @@ if __name__ == '__main__':
         algs = rutils.buildAlgorithmList(args['type'])
     else:
         algs = rutils.buildAlgorithmList(opts)
-            
-    # Open the images
-    source = rutils.SourceImage(args['src'], args['isNonUniform'])
-    dest = rutils.SourceImage(args['dest'], args['isNonUniform'])
+        
+    # Set up some variables
+    sourceName = args['src']
+    destName = args['dest']
+    isNonUniform = args['isNonUniform']
+    isDetail = args['isDetail']
+    userBlockSize = args['blockSize']
+    userBlockSizeMed = 0
+    userBlockSizeHigh = 0
+    
+    # If detail resolution is set, we need to make sure our block size is an
+    # even number before using it. Probably safer to subtract 1 than add.
+    if isDetail: 
+        if userBlockSize % 2 != 0:
+            userBlockSize -= 1
+            stderr.write("Even block size needed when detail flag is set.\n")
+            stderr.write("Block size changed to %d.\n" % userBlockSize)
+        userBlockSizeHigh = userBlockSize / 2
+        userBlockSizeMed = userBlockSize
+        userBlockSize = userBlockSize * 2
+        
+    # Create the source class instances and open the images
+    source = rutils.SourceImage(sourceName)
+    dest = rutils.SourceImage(destName, isNonUniform, isDetail)
+    
+    # Two extra destination images will be used if detail flag is set
+    destMed = None
+    destLow = None
+    
+    if isDetail:
+        destMed = rutils.SourceImage(destName, False, isDetail)
+        destHigh = rutils.SourceImage(destName, False, isDetail)
     
     # Calculate internal data based on whether this is a source or
     # destination image. Passing the user-entered blockSize will flag the
-    # image as the destination image.
+    # image as a destination image.
     source.calculateBlockVars()
-    dest.calculateBlockVars(args['blockSize'])
+    dest.calculateBlockVars(userBlockSize)
     
     # Get the number of blocks in the source image. We'll use this to
     # send a maxValue when we build the average list.
     srcRows, srcCols = source.getRowsCols()
     maxValue = (srcRows * srcCols) - 1
     
+    if isDetail:
+        destRows, destCols = dest.getRowsCols()
+        widthOverride = destCols * userBlockSize
+        heightOverride = destRows * userBlockSize
+        destMed.calculateBlockVars(userBlockSizeMed, widthOverride, heightOverride)
+        destHigh.calculateBlockVars(userBlockSizeHigh, widthOverride, heightOverride)
+    
     # Average lists are straightforward
     source.buildAverageList(maxValue)
     dest.buildAverageList(maxValue)
+    
+    if isDetail:
+        destMed.buildAverageList(maxValue)
+        destHigh.buildAverageList(maxValue)
     
     for atype in algs:
         # Lookups change for each algorithm
         source.buildAverageLUT(atype)
         dest.buildAverageLUT(atype)
         
+        if isDetail:
+            destMed.buildAverageLUT(atype)
+            destHigh.buildAverageLUT(atype)
+        
         # Create the output based on the current algorithm
-        output = rutils.OutputImage(args, atype)
-        output_hdr = rutils.OutputImage(args, atype, True)
+        output = rutils.OutputImage(args, userBlockSize, atype)
+        output_hdr = rutils.OutputImage(args, userBlockSize, atype, True)
         
         # Build hdr and non-hdr versions
         output.buildImage(source, dest)
@@ -172,5 +223,23 @@ if __name__ == '__main__':
         # Save the output images
         output.saveImage()
         output_hdr.saveImage()
+        
+        # Detail test only
+        if isDetail:
+            outputMed = rutils.OutputImage(args, userBlockSizeMed, atype)
+            outputMed_hdr = rutils.OutputImage(args, userBlockSizeMed, atype, True)
+            outputHigh = rutils.OutputImage(args, userBlockSizeHigh, atype)
+            outputHigh_hdr = rutils.OutputImage(args, userBlockSizeHigh, atype, True)
+            
+            outputMed.buildImage(source, destMed)
+            outputMed_hdr.buildImage(source, destMed)
+            
+            outputHigh.buildImage(source, destHigh)
+            outputHigh_hdr.buildImage(source, destHigh)
+            
+            outputMed.saveImage()
+            outputMed_hdr.saveImage()
+            outputHigh.saveImage()
+            outputHigh_hdr.saveImage()
                     
     print ("Finished!")
