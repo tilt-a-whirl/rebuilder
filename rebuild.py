@@ -7,7 +7,8 @@ This rebuilds one image using the tiles of another image. It accepts two source
 images. Usage:
     rebuild.py srcFile destFile [-s blockSize -t type -n]
     -s blockSize: Size of tiles in destination image (default = 30)
-    -t type: Create one single type (l, h, s, v, r, g, or b) (default = all)
+    -t type: Create one single type (l, h, s, v, r, g, or b) or combo of any
+             number of valid types (default = lhsvrgb)
     -n: Non-uniform block size, is average of blockSize (default = False)
     
 The output will be saved to the directory from which the script is called, in
@@ -27,7 +28,10 @@ block size pattern, but different runs will each be different from each other.
 Setting block size will still influence the overall resolution of the pattern,
 as variations are based on a percentage of the original block size.
 
-When a type is not provided, images are processed using luminance (l), hue (h), 
+About types: You can specify one single type (such as 'l') or a combination
+of types ('lgv'). You will get each separate type plus all combinations of
+the letters you include in the string. Invalid letters will be ignored. When 
+a type is not provided, images are processed using luminance (l), hue (h), 
 saturation (s), value (v), red (r), green (g), blue (b), and all combinations,
 resulting in 254 unique combinations (and output files) -- 508 including hdr 
 versions of each.
@@ -51,7 +55,7 @@ def processArgs():
     p.add_option("-s", action="store", dest="blockSize", 
                  help="Block size in pixels (def = 30)")
     p.add_option("-t", action="store", dest="type", 
-                 help="Type (l, h, s, v, r, g or b - optional)")
+                 help="Type (l, h, s, v, r, g, b or combination - optional)")
     p.add_option("-n", action="store_true", dest="isNonUniform", 
                  help="Make block size non-uniform - optional")
     
@@ -67,24 +71,23 @@ def processArgs():
         stderr.write("[-s blockSize -t type -n]\n")
         raise SystemExit(1)
     
-    if (len(opts.type) > 1):
-        stderr.write("Type only takes one parameter\n")
-        stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t type -n]\n")
-        raise SystemExit(1)
-    
-    if (opts.type != '' and opts.type not in 'lhsvrgb'):
-        stderr.write("Type only takes l, h, s, v, r, g, or b\n")
-        stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t type -n]\n")
-        raise SystemExit(1)
+    # Check for duplicate, invalid and extra chars in type string
+    typeDict = {}
+    for t in opts.type:
+        if t in 'lhsvrgb':
+            if typeDict.has_key(t):
+                stderr.write("Duplicate type %s ignored\n" % t)
+            else:
+                typeDict[t] = 1
+        else:
+            stderr.write("Invalid type %s ignored\n" % t)
     
     # Set filenames and additional options
     rebld_args['src'] = args[0]
     rebld_args['dest'] = args[1]
     
     rebld_args['blockSize'] = int(opts.blockSize)
-    rebld_args['type'] = opts.type
+    rebld_args['type'] = typeDict.keys()
     rebld_args['isNonUniform'] = opts.isNonUniform
         
     # Check for valid files. PIL will check that they're valid images.
@@ -110,9 +113,11 @@ if __name__ == '__main__':
     
     # Process arguments and build our list of algorithms, if necessary.
     args = processArgs()
-    opts = ['l', 'h', 's', 'v', 'r', 'g', 'b']
-    if (args['type'] != ''):
-        algs = args['type']
+    opts = 'lhsvrgb'
+    if (len(args['type']) == 1):
+        algs = args['type'] 
+    elif (len(args['type']) > 1):
+        algs = rutils.buildAlgorithmList(args['type'])
     else:
         algs = rutils.buildAlgorithmList(opts)
             
