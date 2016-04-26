@@ -37,7 +37,6 @@ class SourceImage(object):
         """
         Class method for creating instance using existing open image
         """
-        image = image
         return cls(image, isNonUniform, isDetail)
         
     def calculateBlockVars(self, userBlockSize=0, widthOver=0, heightOver=0):
