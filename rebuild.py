@@ -154,9 +154,17 @@ if __name__ == '__main__':
     userBlockSizeMed = 0
     userBlockSizeHigh = 0
     
-    # If detail resolution is set, we need to make sure our block size is an
-    # even number before using it. Probably safer to subtract 1 than add.
+    # Two extra destination images will be used if detail flag is set
+    destMed = None
+    destLow = None
+    
+    # If detail resolution is set, we'll complete the same tasks for two 
+    # additional destination images and manipulate the block size for all.
     if isDetail: 
+        
+        # We need to make sure our block size is an even number before using 
+        # it. Probably safer to subtract 1 than add. We'll also need additional
+        # block sizes for the other two images we'll pull from.
         if userBlockSize % 2 != 0:
             userBlockSize -= 1
             stderr.write("Even block size needed when detail flag is set.\n")
@@ -166,16 +174,8 @@ if __name__ == '__main__':
         userBlockSize = userBlockSize * 2
         
     # Create the source class instances and open the images
-    source = rutils.SourceImage(sourceName)
-    dest = rutils.SourceImage(destName, isNonUniform, isDetail)
-    
-    # Two extra destination images will be used if detail flag is set
-    destMed = None
-    destLow = None
-    
-    if isDetail:
-        destMed = rutils.SourceImage(destName, False, isDetail)
-        destHigh = rutils.SourceImage(destName, False, isDetail)
+    source = rutils.SourceImage.fromFile(sourceName)
+    dest = rutils.SourceImage.fromFile(destName, isNonUniform, isDetail)
     
     # Calculate internal data based on whether this is a source or
     # destination image. Passing the user-entered blockSize will flag the
@@ -188,18 +188,31 @@ if __name__ == '__main__':
     srcRows, srcCols = source.getRowsCols()
     maxValue = (srcRows * srcCols) - 1
     
-    if isDetail:
-        destRows, destCols = dest.getRowsCols()
-        widthOverride = destCols * userBlockSize
-        heightOverride = destRows * userBlockSize
-        destMed.calculateBlockVars(userBlockSizeMed, widthOverride, heightOverride)
-        destHigh.calculateBlockVars(userBlockSizeHigh, widthOverride, heightOverride)
-    
     # Average lists are straightforward
     source.buildAverageList(maxValue)
     dest.buildAverageList(maxValue)
-    
+        
     if isDetail:
+
+        # Create the additional image instances. We'll use the actual image
+        # from the first destination image created so we don't open the same
+        # file three times.
+        destImage = dest.getImage()
+        destMed = rutils.SourceImage.fromImage(destImage, False, isDetail)
+        destHigh = rutils.SourceImage.fromImage(destImage, False, isDetail)
+        
+        # We need to sync up the final image size with the main destination 
+        # image. We'll use width and height overrides when calculating blocks 
+        # in the additional images to make sure everything is the same size.
+        destRows, destCols = dest.getRowsCols()
+        width = destCols * userBlockSize
+        height = destRows * userBlockSize
+        
+        destMed.calculateBlockVars(userBlockSizeMed, width, height)
+        destHigh.calculateBlockVars(userBlockSizeHigh, width, height)
+    
+        # Build the average lists for each, using the maxValue calculated from
+        # the common source image number of blocks
         destMed.buildAverageList(maxValue)
         destHigh.buildAverageList(maxValue)
     
@@ -207,10 +220,6 @@ if __name__ == '__main__':
         # Lookups change for each algorithm
         source.buildAverageLUT(atype)
         dest.buildAverageLUT(atype)
-        
-        if isDetail:
-            destMed.buildAverageLUT(atype)
-            destHigh.buildAverageLUT(atype)
         
         # Create the output based on the current algorithm
         output = rutils.OutputImage(args, userBlockSize, atype)
@@ -226,6 +235,9 @@ if __name__ == '__main__':
         
         # Detail test only
         if isDetail:
+            destMed.buildAverageLUT(atype)
+            destHigh.buildAverageLUT(atype)
+        
             outputMed = rutils.OutputImage(args, userBlockSizeMed, atype)
             outputMed_hdr = rutils.OutputImage(args, userBlockSizeMed, atype, True)
             outputHigh = rutils.OutputImage(args, userBlockSizeHigh, atype)

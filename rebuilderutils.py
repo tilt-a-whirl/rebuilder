@@ -6,11 +6,11 @@ import itertools
 
 class SourceImage(object):
     
-    def __init__(self, filename, isNonUniform=False, isDetail=False):
+    def __init__(self, image, isNonUniform, isDetail):
         """
         Init method
         """
-        self.image = Image.open(filename)
+        self.image = image
         self.isNonUniform = isNonUniform
         self.isDetail = isDetail
         self.blockSize = 0
@@ -23,10 +23,24 @@ class SourceImage(object):
         self.colList = []
         self.avgList = []
         self.avgLUT = []
+    
+    @classmethod    
+    def fromFile(cls, filename, isNonUniform=False, isDetail=False):
+        """
+        Class method for creating instance using image filename
+        """
+        image = Image.open(filename)
+        return cls(image, isNonUniform, isDetail)
         
-    def calculateBlockVars(self, userBlockSize=0, 
-                           widthOverride=0, 
-                           heightOverride=0):
+    @classmethod
+    def fromImage(cls, image, isNonUniform=False, isDetail=False):
+        """
+        Class method for creating instance using existing open image
+        """
+        image = image
+        return cls(image, isNonUniform, isDetail)
+        
+    def calculateBlockVars(self, userBlockSize=0, widthOver=0, heightOver=0):
         """
         For source image: Calculates block size for src image of any size, to 
         be divided evenly into 256 square-ish tiles (as close as possible). May 
@@ -34,6 +48,8 @@ class SourceImage(object):
         If userBlockSize = 0, it is assumed that this is the source image.
         If userBlockSize > 0, variable only applies to destination image. 
         For dest image: Calculates block vars based on user-input block size.
+        widthOver and heightOver are overrides for image width and height, and
+        are used for secondary destination images when detail is turned on.
         """
         width = self.image.size[0]
         height = self.image.size[1]
@@ -41,9 +57,9 @@ class SourceImage(object):
         if userBlockSize > 0:  # if dest image
             self.blockWidth = userBlockSize
             self.blockHeight = userBlockSize
-            if widthOverride > 0 and heightOverride > 0:
-                self.numCols = int(widthOverride / userBlockSize)
-                self.numRows = int(heightOverride / userBlockSize)
+            if widthOver > 0 and heightOver > 0:
+                self.numCols = int(widthOver / userBlockSize)
+                self.numRows = int(heightOver / userBlockSize)
             else:
                 self.numCols = int(width / userBlockSize)
                 self.numRows = int(height / userBlockSize)
