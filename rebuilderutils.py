@@ -384,7 +384,7 @@ def buildAlgorithmList(opts):
             for char in subset:
                 st = st + char
             algs.append(st)
-                                    
+                      
     return algs
     
 def RGBtoHSV(r, g, b):
