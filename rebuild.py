@@ -156,7 +156,7 @@ if __name__ == '__main__':
     
     # Two extra destination images will be used if detail flag is set
     destMed = None
-    destLow = None
+    destHigh = None
     
     # If detail resolution is set, we'll complete the same tasks for two 
     # additional destination images and manipulate the block size for all.
@@ -192,6 +192,7 @@ if __name__ == '__main__':
     source.buildAverageList(maxValue)
     dest.buildAverageList(maxValue)
         
+    # Repeat the above process for the additional detail images
     if isDetail:
 
         # Create the additional image instances. We'll use the actual image
@@ -215,8 +216,11 @@ if __name__ == '__main__':
         # the common source image number of blocks
         destMed.buildAverageList(maxValue)
         destHigh.buildAverageList(maxValue)
-    
+            
+    # Iterate through the image types and combinations we're processing and
+    # create output images
     for atype in algs:
+        
         # Lookups change for each algorithm
         source.buildAverageLUT(atype)
         dest.buildAverageLUT(atype)
@@ -226,32 +230,17 @@ if __name__ == '__main__':
         output_hdr = rutils.OutputImage(args, userBlockSize, atype, True)
         
         # Build hdr and non-hdr versions
-        output.buildImage(source, dest)
-        output_hdr.buildImage(source, dest)
+        if isDetail:
+            destMed.buildAverageLUT(atype)
+            destHigh.buildAverageLUT(atype)
+            output.buildImage(source, dest, destMed, destHigh)
+            output_hdr.buildImage(source, dest, destMed, destHigh)
+        else:
+            output.buildImage(source, dest)
+            output_hdr.buildImage(source, dest)
     
         # Save the output images
         output.saveImage()
         output_hdr.saveImage()
-        
-        # Detail test only
-        if isDetail:
-            destMed.buildAverageLUT(atype)
-            destHigh.buildAverageLUT(atype)
-        
-            outputMed = rutils.OutputImage(args, userBlockSizeMed, atype)
-            outputMed_hdr = rutils.OutputImage(args, userBlockSizeMed, atype, True)
-            outputHigh = rutils.OutputImage(args, userBlockSizeHigh, atype)
-            outputHigh_hdr = rutils.OutputImage(args, userBlockSizeHigh, atype, True)
-            
-            outputMed.buildImage(source, destMed)
-            outputMed_hdr.buildImage(source, destMed)
-            
-            outputHigh.buildImage(source, destHigh)
-            outputHigh_hdr.buildImage(source, destHigh)
-            
-            outputMed.saveImage()
-            outputMed_hdr.saveImage()
-            outputHigh.saveImage()
-            outputHigh_hdr.saveImage()
                     
     print ("Finished!")
