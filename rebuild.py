@@ -3,15 +3,26 @@
 """
 rebuild.py by Amy Tucker
 
-This rebuilds one image using the tiles of another image. It accepts two source 
-images. Usage:
-    rebuild.py srcFile destFile [-s blockSize -t type -n -d]
-    -s blockSize: Size of tiles in destination image (default = 30)
-    -t type: Create one single type (l, h, s, v, r, g, or b) or combo of any
-             number of valid types (default = lhsvrgb)
-    -n: non-uniform block size, averages to blockSize (default = False)
-    -d: detail resolution (ignores non-uniform if set) (default = False)
-    
+This rebuilds a "destination" image using the tiles of a "source" image. It 
+accepts two images as input. Usage:
+
+    rebuild.py srcFile destFile [-b blockSize -t type -n 
+                                 -d -m medThreshold -s smallThreshold]
+                                 
+    -b blockSize      : size of tiles in destination image (default = 30)
+    -t type           : create one single type (l, h, s, v, r, g, or b) or 
+                        combo of any number of valid types (default = lhsvrgb)
+    -n                : non-uniform block size, averages to blockSize 
+                        (default = False)
+    -d                : detail resolution (ignores non-uniform if set) 
+                        (default = False)
+    -m medThreshold   : medium size blocks (detail resolution only) will not
+                        appear in areas where the color variance is below this
+                        number (1-10, default = 5)
+    -s smallThreshold : small blocks (detail resolution only) will not appear 
+                        in areas where the color variance is below this number 
+                        (1-10, default = 8)
+                       
 The output will be saved to the directory from which the script is called, in
 a folder named 'output.' The output file name will be in the form 
 destBaseName_srcBaseName_size_type.tif. For example, if the source image is 
@@ -41,6 +52,13 @@ saturation (s), value (v), red (r), green (g), blue (b), and all combinations,
 resulting in 254 unique combinations (and output files) -- 508 including hdr 
 versions of each.
 
+About detail resolution: This image is created in three passes, with the final
+two passes (medium and high resolution) being dependent on the color variance
+of the pass before, in the areas where the new blocks would appear. Sensitivity
+can be adjusted using the medium and high threshold values. Adjustment of these
+values will provide the most pleasing variation of blocks in the final image. 
+A higher threshold usually works best for a smaller area due to the block's
+lower overall pixel count, causing variance values to generally be higher.
 """
 
 import rebuilderutils as rutils
@@ -57,7 +75,7 @@ def processArgs():
         
     usage = "Usage: %prog srcImage destImage [options]"
     p = OptionParser(usage=usage)
-    p.add_option("-s", action="store", dest="blockSize", 
+    p.add_option("-b", action="store", dest="blockSize", 
                  help="Block size in pixels (default = 30)")
     p.add_option("-t", action="store", dest="type", 
                  help="Type (l, h, s, v, r, g, b or combination - optional)")
@@ -65,32 +83,63 @@ def processArgs():
                  help="Make block size non-uniform - optional")
     p.add_option("-d", action="store_true", dest="isDetail",
                  help="Use detail resolution - optional")
+    p.add_option("-m", action="store", dest="medThreshold",
+                 help="Medium res color variance threshold (1-10, default = 5)")
+    p.add_option("-s", action="store", dest="smallThreshold",
+                 help="High res color variance threshold (1-10, default = 8)")
     
     p.set_defaults(blockSize = 30)
     p.set_defaults(type = '')
     p.set_defaults(isNonUniform = False)
     p.set_defaults(isDetail = False)
+    p.set_defaults(medThreshold = 5)
+    p.set_defaults(smallThreshold = 8)
     
     opts, args = p.parse_args()
+    
+    # Create some temporary variables to validate before assigning to the 
+    # args dict later
+    temp_blockSize = int(opts.blockSize)
+    temp_type = opts.type
+    temp_isNonUniform = opts.isNonUniform
+    temp_isDetail = opts.isDetail
+    temp_medThreshold = int(opts.medThreshold)
+    temp_smallThreshold = int(opts.smallThreshold) 
     
     # Check that we have two file names
     if (len(args) != 2):
         stderr.write("Wrong number of arguments\n")
         stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t type -n]\n")
+        stderr.write("[-b blockSize -t type -n \n")
+        stderr.write("       -d -m medThreshold -s smallThreshold]\n")
+        raise SystemExit(1)
+    
+    # Check for valid files. PIL will check that they're valid images.
+    if (not os.path.isfile(args[0])):
+        stderr.write("Invalid source file\n")
+        stderr.write("Usage: %s srcImage destImage " % argv[0])
+        stderr.write("[-b blockSize -t type -n \n")
+        stderr.write("       -d -m medThreshold -s smallThreshold]\n")
+        raise SystemExit(1)
+    
+    if (not os.path.isfile(args[1])):
+        stderr.write("Invalid destination file\n")
+        stderr.write("Usage: %s srcImage destImage " % argv[0])
+        stderr.write("[-b blockSize -t type -n \n")
+        stderr.write("       -d -m medThreshold -s smallThreshold]\n")
         raise SystemExit(1)
     
     # Make sure we have a workable block size
-    if opts.blockSize < 8 and opts.isDetail:
-        stderr.write("Block size too small for detail option. Clamping to 8.\n")
-        opts.blockSize = 8
-    elif opts.blockSize < 4:
-        stderr.write("Block size too small. Clamping to 4.\n")
-        opts.blockSize = 4
+    if temp_blockSize < 8 and temp_isDetail:
+        stderr.write("Block size too small for detail option. Clamped to 8.\n")
+        temp_blockSize = 8
+    elif temp_blockSize < 4:
+        stderr.write("Block size too small. Clamped to 4.\n")
+        temp_blockSize = 4
     
     # Check for duplicate, invalid and extra chars in type string
     typeDict = {}
-    for t in opts.type:
+    for t in temp_type:
         if t in 'lhsvrgb':
             if typeDict.has_key(t):
                 stderr.write("Duplicate type %s ignored\n" % t)
@@ -100,31 +149,29 @@ def processArgs():
             stderr.write("Invalid type %s ignored\n" % t)
             
     # Check if detail flag overrides non-uniform flag
-    if opts.isDetail and opts.isNonUniform:
+    if temp_isDetail and temp_isNonUniform:
         stderr.write("Detail is specified; non-uniform flag ignored.\n")
-        opts.isNonUniform = False
+        temp_isNonUniform = False
+    
+    # Check threshold values
+    if temp_isDetail:
+        if temp_medThreshold < 1 or temp_medThreshold > 10:
+            stderr.write("Medium threshold out of 1-10 range, set to 5.\n")
+            opts.medThreshold = 5
+        if temp_smallThreshold < 1 or temp_smallThreshold > 10:
+            stderr.write("Small threshold out of 1-10 range, set to 8.\n")
+            temp_smallThreshold = 8
     
     # Set filenames and additional options
     rebld_args['src'] = args[0]
     rebld_args['dest'] = args[1]
     
-    rebld_args['blockSize'] = int(opts.blockSize)
+    rebld_args['blockSize'] = temp_blockSize
     rebld_args['type'] = typeDict.keys()
-    rebld_args['isNonUniform'] = opts.isNonUniform
-    rebld_args['isDetail'] = opts.isDetail
-        
-    # Check for valid files. PIL will check that they're valid images.
-    if (not os.path.isfile(rebld_args['src'])):
-        stderr.write("Invalid source file\n")
-        stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t type]\n")
-        raise SystemExit(1)
-    
-    if (not os.path.isfile(rebld_args['dest'])):
-        stderr.write("Invalid destination file\n")
-        stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-s blockSize -t type]\n")
-        raise SystemExit(1)
+    rebld_args['isNonUniform'] = temp_isNonUniform
+    rebld_args['isDetail'] = temp_isDetail
+    rebld_args['medThreshold'] = temp_medThreshold
+    rebld_args['smallThreshold'] = temp_smallThreshold
     
     return (rebld_args)
     

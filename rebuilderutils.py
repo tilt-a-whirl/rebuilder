@@ -269,6 +269,8 @@ class OutputImage(object):
         self.atype = atype
         self.outName = ''
         self.outfile = None
+        self.medThreshold = args['medThreshold']
+        self.smallThreshold = args['smallThreshold']
         self.isNonUniform = args['isNonUniform']
         self.isDetail = args['isDetail']
         self.userBlockSize = userBlockSize
@@ -367,7 +369,7 @@ class OutputImage(object):
             
             variance = destList[i][2]
             
-            if variance < 5:
+            if variance < self.medThreshold:
                 skipList.append(dest_idx)
             
             # Calculate the source block bounding box (no size variations)
@@ -454,7 +456,7 @@ class OutputImage(object):
                     skipListMed.append(dest_idx)
                     continue
                 
-                if variance < 8:
+                if variance < self.smallThreshold:
                     skipListMed.append(dest_idx)
                 
                 # Calculate the source block bounding box (no size variations)
