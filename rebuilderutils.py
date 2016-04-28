@@ -114,6 +114,7 @@ class SourceImage(object):
         # Build the list of average block hues, values, or saturations, 
         # then sort
         for i in range(self.numBlocks):
+            
             col = int(i % self.numCols)
             row = int(i / self.numCols)
             start_x = col * self.blockWidth
@@ -267,57 +268,58 @@ class OutputImage(object):
         Init method - also creates appropriate output file name.
         """
         self.atype = atype
-        self.outName = ''
-        self.outfile = None
+        self.outFile = None
         self.medThreshold = args['medThreshold']
         self.smallThreshold = args['smallThreshold']
         self.isNonUniform = args['isNonUniform']
         self.isDetail = args['isDetail']
         self.userBlockSize = userBlockSize
         self.is_hdr = is_hdr
-        # Build file names for later
-        srcFile = args['src']
-        destFile = args['dest']
+        
+        # Build the output file name
         if self.isDetail:
             size = str(self.userBlockSize / 2)
         else:
             size = str(self.userBlockSize)
-        head, tail = os.path.split(srcFile)
+        head, tail = os.path.split(args['src'])
         sfile, ext = os.path.splitext(tail)
-        head, tail = os.path.split(destFile)
+        head, tail = os.path.split(args['dest'])
         dfile, ext = os.path.splitext(tail)
         directory = "output/"
         if not os.path.exists(directory):
             os.makedirs(directory)
-        self.outName = directory + dfile + "_" + sfile + "_" + size
+        outName = directory + dfile + "_" + sfile + "_" + size
         if self.isDetail:
-            self.outName = self.outName + 'd'
+            outName = outName + 'd'
         elif self.isNonUniform:
-            self.outName = self.outName + 'n' 
-        self.outName = self.outName + "_" + self.atype
+            outName = outName + 'n' 
+        outName = outName + "_" + self.atype
         if self.is_hdr:
-            self.outName = self.outName + '_hdr.tif'
+            outName = outName + '_hdr.tif'
         else:
-            self.outName = self.outName + '.tif'
+            outName = outName + '.tif'
+        self.outName = outName
         
     def buildImage(self, sourceImage, destImage, destMed=None, destHigh=None):
         """
         Builds regular and hdr output images. Additional destination images
         are used when the detail flag is specified.
-        """
-        # This is a detail image if the extra destination instances are present
-        isDetail = False
-        if destMed and destHigh:
-            isDetail = True
-            
+        """ 
+        # Number of passes is based on whether this is a detail image.
+        numPasses = 1
+        if self.isDetail:
+            numPasses = 3
+        
         # Grab images, lookup tables and sizes
         srcImg = sourceImage.getImage()
         
         srcList = sourceImage.getAverageLUT()
-        destList = destImage.getAverageLUT()
         
         srcBlockWidth, srcBlockHeight = sourceImage.getBlockSize()
         srcNumRows, srcNumCols = sourceImage.getRowsCols()
+
+        # We'll grab this again during the first pass, but we need it here to
+        # calculate the output size.
         destNumRows, destNumCols = destImage.getRowsCols()       
         
         # Calculate some block sizes and counts. Even if non-uniform, the 
@@ -326,27 +328,15 @@ class OutputImage(object):
         outputSizeX = destNumCols * self.userBlockSize
         outputSizeY = destNumRows * self.userBlockSize
         
-        # Get increment lists from the destination image
-        rowList, colList = destImage.getIncrementLists()
-                
         # Create and build an output file that is the size of the number of 
         # rows and columns of the destination file with the given block size.  
-        # Should be pretty close to the original size.
-        self.outfile = Image.new("RGB", (outputSizeX, outputSizeY))
+        # Should be pretty close to the original size. More cropping can occur
+        # if this is a detail image because three passes need to fit in one
+        # size.
+        self.outFile = Image.new("RGB", (outputSizeX, outputSizeY))
             
+        # Get the number of source image blocks
         srcNumBlocks = len(srcList)
-        destNumBlocks = len(destList)
-                    
-        # Create a coordinate lookup list based on whether the hdr option is on 
-        # or off. If off, we look up the corresponding memory block using the 
-        # actual luminance value of the portrait block. This can mean that not 
-        # all memory blocks are used, due to some memory list indices not 
-        # existing in the list of portrait luminance values. If hdr is on, then 
-        # for each portrait block, a memory block will be located by scaling 
-        # the index of the portrait block. Actual luminance values will not 
-        # correspond to indices in the memory list in this case, but this 
-        # ensures that each block in the memory list will be used.
-        scale = 1.0 / destNumBlocks * srcNumBlocks
         
         # These multipliers make it possible for us to avoid an if statement 
         # inside the loop. If hdr, multiply the 'scale * i' assignment by 1 and
@@ -355,109 +345,83 @@ class OutputImage(object):
         scale_mult = int(self.is_hdr)
         dest_mult = int(not self.is_hdr)
         
-        # Create a list of indices where the color variance is 0. This will
-        # be the blocks we skip in the detail passes, if we're using them.
-        skipList = []
-        
-        for i in range(destNumBlocks):
-            j = (int(scale * i) * scale_mult) + \
-                (int(destList[i][1]) * dest_mult)
-            
-            # Grab the source and destination list indices
-            src_idx = srcList[j][0]
-            dest_idx = destList[i][0]
-            
-            variance = destList[i][2]
-            
-            if variance < self.medThreshold:
-                skipList.append(dest_idx)
-            
-            # Calculate the source block bounding box (no size variations)
-            start_x = int(src_idx % srcNumCols) * srcBlockWidth
-            start_y = int(src_idx / srcNumCols) * srcBlockHeight
-            end_x = start_x + srcBlockWidth
-            end_y = start_y + srcBlockHeight
-            
-            # Grab the source image blocks
-            srcBlock = srcImg.crop((start_x, start_y, end_x, end_y))
-            
-            # Randomly determine whether this block will be flipped and/or 
-            # rotated
-            flip = randint(0, 2)
-            rotate = randint(0, 3)
-            if (flip > 0):
-                srcBlock = srcBlock.transpose(flip-1)
-            if (rotate > 0):
-                srcBlock = srcBlock.transpose(rotate-1)
+        # Create a list of variable dicts that will change with each pass.
+        tempList = [{}, {}, {}]
+        tempList[0]['destImage'] = destImage
+        tempList[1]['destImage'] = destMed
+        tempList[2]['destImage'] = destHigh
+        tempList[0]['threshold'] = self.medThreshold
+        tempList[1]['threshold'] = self.smallThreshold
+        tempList[2]['threshold'] = 0
+                        
+        # Each pass will check against the skip list built in the previous pass        
+        lastSkipList = None
                 
-            # Calculate destination block position and size
-            col = int(dest_idx % destNumCols)
-            row = int(dest_idx / destNumCols)
-            start_x = col * self.userBlockSize
-            start_y = row * self.userBlockSize
-            end_x = start_x + self.userBlockSize
-            end_y = start_y + self.userBlockSize
+        for p in range(numPasses):
             
-            # Calculate block uniformity. We have to look at the current
-            # value and the next one, which correspond to the start and
-            # end values respectively. The increments will be all 0's if
-            # uniform blocks are used.
-            start_x += colList[col]
-            end_x += colList[col+1]
-            start_y += rowList[row]
-            end_y += rowList[row+1]
-            destBlockWidth = end_x - start_x 
-            destBlockHeight = end_y - start_y
-                
-            # If the dest block size is not equal to the source block size, 
-            # resize the source block to be the same size as the dest block
-            if ((srcBlockWidth != destBlockWidth) or  
-                (srcBlockHeight != destBlockHeight)):
-                srcBlock = srcBlock.resize((destBlockWidth, destBlockHeight))
+            currentDestImage = tempList[p]['destImage']
+            currentThreshold = tempList[p]['threshold']
             
-            # Paste the memory block into the correct coordinates of the output 
-            # file
-            self.outfile.paste(srcBlock, (start_x, start_y))
+            # Get increment lists from the destination image
+            rowList, colList = currentDestImage.getIncrementLists()
+            currentRowList = rowList
+            currentColList = colList
             
-        # Second and third passes for detail image
-        if isDetail:
+            # Save rows and columns (only columns is used)
+            rows, cols = currentDestImage.getRowsCols()
+            currentCols = cols
             
-            skipListMed = []
+            # Get the destination lookup table
+            currentDestLUT = currentDestImage.getAverageLUT()
+            currentNumBlocks = len(currentDestLUT)
             
-            destListMed = destMed.getAverageLUT()
-            destNumRowsMed, destNumColsMed = destMed.getRowsCols()
-            destNumBlocksMed = len(destListMed)
-            passBlockSize = self.userBlockSize / 2
+            # Create a coordinate lookup list based on whether the hdr option 
+            # is on or off. If off, we look up the corresponding memory block 
+            # using the actual luminance value of the portrait block. This can 
+            # mean that not all memory blocks are used, due to some memory list 
+            # indices not existing in the list of portrait luminance values. If 
+            # hdr is on, then for each portrait block, a memory block will be 
+            # located by scaling the index of the portrait block. Actual 
+            # luminance values will not correspond to indices in the memory 
+            # list in this case, but this ensures that each block in the memory 
+            # list will be used.
+            currentScale = 1.0 / currentNumBlocks * srcNumBlocks
             
-            innerRows = destNumRowsMed / destNumRows
-            innerCols = destNumColsMed / destNumCols
+            # Create a list of indices where the color variance is 0. This will
+            # be the blocks we skip in the detail passes, if we're using them.
+            skipList = []
             
-            scale = 1.0 / destNumBlocksMed * srcNumBlocks
-            
-            # Medium-res pass
-            for i in range(destNumBlocksMed):
-                
-                j = (int(scale * i) * scale_mult) + \
-                    (int(destListMed[i][1]) * dest_mult)
+            # Add the block size for this pass
+            currentBlockSize = self.userBlockSize / (2**p)
+                                    
+            for i in range(currentNumBlocks):
+                j = (int(currentScale * i) * scale_mult) + \
+                    (int(currentDestLUT[i][1]) * dest_mult)
                 
                 # Grab the source and destination list indices
                 src_idx = srcList[j][0]
-                dest_idx = destListMed[i][0]
+                dest_idx = currentDestLUT[i][0]
                 
-                variance = destListMed[i][2]
-                
+                # Grab the color variance of the block. If it's below the 
+                # threshold we'll save it to the list to be skipped in future 
+                # passes.
+                variance = currentDestLUT[i][2]
+                 
+                # PASS > 0
                 # Work backwards to find the index of the larger block that
-                # contains this smaller one
-                y = dest_idx / (destNumColsMed * innerRows)
-                x = (dest_idx % destNumColsMed) / innerCols
-                outeridx = (y * destNumCols) + x
-                
-                if outeridx in skipList:
-                    skipListMed.append(dest_idx)
-                    continue
-                
-                if variance < self.smallThreshold:
-                    skipListMed.append(dest_idx)
+                # contains this smaller one. Division by 0 is not an issue
+                # because this won't run on pass 0
+                if lastSkipList:
+                    y = dest_idx / (currentCols * (2))
+                    x = (dest_idx % currentCols) / (2)
+                    outeridx = (y * (currentCols / 2)) + x
+                      
+                    if outeridx in lastSkipList:
+                        skipList.append(dest_idx)
+                        continue
+                    
+                if variance < currentThreshold:
+                    skipList.append(dest_idx)
                 
                 # Calculate the source block bounding box (no size variations)
                 start_x = int(src_idx % srcNumCols) * srcBlockWidth
@@ -478,14 +442,26 @@ class OutputImage(object):
                     srcBlock = srcBlock.transpose(rotate-1)
                     
                 # Calculate destination block position and size
-                col = int(dest_idx % destNumColsMed)
-                row = int(dest_idx / destNumColsMed)
-                start_x = col * passBlockSize
-                start_y = row * passBlockSize
-                end_x = start_x + passBlockSize
-                end_y = start_y + passBlockSize
+                col = int(dest_idx % currentCols)
+                row = int(dest_idx / currentCols)
+                start_x = col * currentBlockSize
+                start_y = row * currentBlockSize
+                end_x = start_x + currentBlockSize
+                end_y = start_y + currentBlockSize
+                
+                # Calculate block uniformity. We have to look at the current
+                # value and the next one, which correspond to the start and
+                # end values respectively. The increments will be all 0's if
+                # uniform blocks are used.
+                start_x += currentColList[col]
+                end_x += currentColList[col+1]
+                start_y += currentRowList[row]
+                end_y += currentRowList[row+1]      
+
+                # Calculate the block's dimensions. Will be different each time
+                # if non-uniform is used.
                 destBlockWidth = end_x - start_x 
-                destBlockHeight = end_y - start_y
+                destBlockHeight = end_y - start_y        
                     
                 # If the dest block size is not equal to the source block size, 
                 # resize the source block to be the same size as the dest block
@@ -495,80 +471,15 @@ class OutputImage(object):
                 
                 # Paste the memory block into the correct coordinates of the 
                 # output file
-                self.outfile.paste(srcBlock, (start_x, start_y))
+                self.outFile.paste(srcBlock, (start_x, start_y))
                 
-            destListHigh = destHigh.getAverageLUT()
-            destNumRowsHigh, destNumColsHigh = destHigh.getRowsCols()
-            destNumBlocksHigh = len(destListHigh)
-            passBlockSize = passBlockSize / 2
-            
-            innerRows = destNumRowsHigh / destNumRowsMed
-            innerCols = destNumColsHigh / destNumColsMed
-            
-            scale = 1.0 / destNumBlocksHigh * srcNumBlocks
-            
-            # Medium-res pass
-            for i in range(destNumBlocksHigh):
-                
-                j = (int(scale * i) * scale_mult) + \
-                    (int(destListHigh[i][1]) * dest_mult)
-                
-                # Grab the source and destination list indices
-                src_idx = srcList[j][0]
-                dest_idx = destListHigh[i][0]
-                
-                # Work backwards to find the index of the larger block that
-                # contains this smaller one
-                y = dest_idx / (destNumColsHigh * innerRows)
-                x = (dest_idx % destNumColsHigh) / innerCols
-                outeridx = (y * destNumColsMed) + x
-                
-                if outeridx in skipListMed:
-                    continue
-                
-                # Calculate the source block bounding box (no size variations)
-                start_x = int(src_idx % srcNumCols) * srcBlockWidth
-                start_y = int(src_idx / srcNumCols) * srcBlockHeight
-                end_x = start_x + srcBlockWidth
-                end_y = start_y + srcBlockHeight
-                
-                # Grab the source image blocks
-                srcBlock = srcImg.crop((start_x, start_y, end_x, end_y))
-                
-                # Randomly determine whether this block will be flipped and/or 
-                # rotated
-                flip = randint(0, 2)
-                rotate = randint(0, 3)
-                if (flip > 0):
-                    srcBlock = srcBlock.transpose(flip-1)
-                if (rotate > 0):
-                    srcBlock = srcBlock.transpose(rotate-1)
-                    
-                # Calculate destination block position and size
-                col = int(dest_idx % destNumColsHigh)
-                row = int(dest_idx / destNumColsHigh)
-                start_x = col * passBlockSize
-                start_y = row * passBlockSize
-                end_x = start_x + passBlockSize
-                end_y = start_y + passBlockSize
-                destBlockWidth = end_x - start_x 
-                destBlockHeight = end_y - start_y
-                    
-                # If the dest block size is not equal to the source block size, 
-                # resize the source block to be the same size as the dest block
-                if ((srcBlockWidth != destBlockWidth) or  
-                    (srcBlockHeight != destBlockHeight)):
-                    srcBlock = srcBlock.resize((destBlockWidth, destBlockHeight))
-                
-                # Paste the memory block into the correct coordinates of the 
-                # output file
-                self.outfile.paste(srcBlock, (start_x, start_y))
-            
+            lastSkipList = skipList
+         
     def saveImage(self):
         """
         Saves the output image
         """
-        self.outfile.save(self.outName, "TIFF")
+        self.outFile.save(self.outName, "TIFF")
         print("Saved " + self.outName)
             
 def buildAlgorithmList(opts):

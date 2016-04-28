@@ -268,13 +268,13 @@ if __name__ == '__main__':
     # create output images
     for atype in algs:
         
-        # Lookups change for each algorithm
-        source.buildAverageLUT(atype)
-        dest.buildAverageLUT(atype)
-        
         # Create the output based on the current algorithm
         output = rutils.OutputImage(args, userBlockSize, atype)
         output_hdr = rutils.OutputImage(args, userBlockSize, atype, True)
+        
+        # Lookups change for each algorithm
+        source.buildAverageLUT(atype)
+        dest.buildAverageLUT(atype)
         
         # Build hdr and non-hdr versions
         if isDetail:
@@ -285,7 +285,7 @@ if __name__ == '__main__':
         else:
             output.buildImage(source, dest)
             output_hdr.buildImage(source, dest)
-    
+                
         # Save the output images
         output.saveImage()
         output_hdr.saveImage()
