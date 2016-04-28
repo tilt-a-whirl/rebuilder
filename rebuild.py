@@ -14,8 +14,7 @@ accepts two images as input. Usage:
                         combo of any number of valid types (default = lhsvrgb)
     -n                : non-uniform block size, averages to blockSize 
                         (default = False)
-    -d                : detail resolution (ignores non-uniform if set) 
-                        (default = False)
+    -d                : detail resolution (default = False)
     -m medThreshold   : medium size blocks (detail resolution only) will not
                         appear in areas where the color variance is below this
                         number (1-10, default = 5)
@@ -30,19 +29,16 @@ backyard.tif, and the destination image is me.tif, the block size is 30
 and the type is luminance, the final output will be named me_backyard_30_l.tif 
 and me_backyard_30_l_hdr.tif. If non-uniform blocks are used, the size will
 be followed by 'n,' as in me_backyard_30n_l_hdr.tif. If the detail option is
-specified, non-uniform block size will be ignored if set, and the file name
-will appear as me_backyard_30d_l_hdr.tif. No matter the input file formats,
-the output will be a TIFF. Note: Choose the best compression possible for
-your input files, or none at all. See PIL documentation for supported input
-file formats.
+also specified, the file name will appear as me_backyard_30nd_l_hdr.tif. No 
+matter the input file formats, the output will be a TIFF. Note: Choose the best 
+compression possible for your input files, or none at all. See PIL docs for 
+supported input file formats.
 
 A note on non-uniform blocks: The sizes of the blocks are determined when the
 script launches, so all images produced by a single run will show the same
 block size pattern, but different runs will each be different from each other.
 Setting block size will still influence the overall resolution of the pattern,
 as variations are based on a percentage of the original block size.
-
-If detail is specified, non-uniform flag will be ignored if set.
 
 About types: You can specify one single type (such as 'l') or a combination
 of types ('lgv'). You will get each separate type plus all combinations of
@@ -59,6 +55,9 @@ can be adjusted using the medium and high threshold values. Adjustment of these
 values will provide the most pleasing variation of blocks in the final image. 
 A higher threshold usually works best for a smaller area due to the block's
 lower overall pixel count, causing variance values to generally be higher.
+
+If non-uniform is specified with detail, each pass uses its own offset tables.
+This can create some interesting block overlap effects.
 """
 
 import rebuilderutils as rutils
@@ -147,11 +146,6 @@ def processArgs():
                 typeDict[t] = 1
         else:
             stderr.write("Invalid type %s ignored\n" % t)
-            
-    # Check if detail flag overrides non-uniform flag
-    if temp_isDetail and temp_isNonUniform:
-        stderr.write("Detail is specified; non-uniform flag ignored.\n")
-        temp_isNonUniform = False
     
     # Check threshold values
     if temp_isDetail:
@@ -246,8 +240,8 @@ if __name__ == '__main__':
         # from the first destination image created so we don't open the same
         # file three times.
         destImage = dest.getImage()
-        destMed = rutils.SourceImage.fromImage(destImage, False, isDetail)
-        destHigh = rutils.SourceImage.fromImage(destImage, False, isDetail)
+        destMed = rutils.SourceImage.fromImage(destImage, isNonUniform, isDetail)
+        destHigh = rutils.SourceImage.fromImage(destImage, isNonUniform, isDetail)
         
         # We need to sync up the final image size with the main destination 
         # image. We'll use width and height overrides when calculating blocks 

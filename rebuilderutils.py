@@ -54,6 +54,7 @@ class SourceImage(object):
         height = self.image.size[1]
         
         if userBlockSize > 0:  # if dest image
+            
             self.blockWidth = userBlockSize
             self.blockHeight = userBlockSize
             if widthOver > 0 and heightOver > 0:
@@ -62,9 +63,11 @@ class SourceImage(object):
             else:
                 self.numCols = int(width / userBlockSize)
                 self.numRows = int(height / userBlockSize)
-            # Build a list of increments for block width and height. If we're
+                
+            # Build a list of offsets for block width and height. If we're
             # not using uneven blocks, we'll just set them all to 0.
             if self.isNonUniform:
+                
                 # Block width will never be expanded or shrunk by more than
                 # 2/3 of user block size. Create the lists one longer than
                 # needed because we're looking at boundaries, not the blocks
@@ -75,19 +78,23 @@ class SourceImage(object):
                                 for r in range(self.numRows + 1)]
                 self.colList = [randint(lower, upper) 
                                 for c in range(self.numCols + 1)]
+                
                 # We won't increment the first and last row or column, 
                 # otherwise we'll go over the edge of the image (or under).
                 self.rowList[0] = 0
                 self.colList[0] = 0
                 self.rowList[self.numRows] = 0
                 self.colList[self.numCols] = 0
+                
             else:
+                
                 # Create the lists one longer than needed because we're looking
                 # at boundaries, not the blocks themselves
                 self.rowList = [0] * (self.numRows + 1)
                 self.colList = [0] * (self.numCols + 1)
 
         else: # if source image
+            
             # 1024 / 512 = 2
             aspect = float(width) / float(height)
             rows = sqrt(256.0 / aspect)
@@ -98,6 +105,7 @@ class SourceImage(object):
             self.blockHeight = int(height / rows)
             self.numRows = rows
             self.numCols = cols
+            
             # Increments aren't used on the source image. Create the lists one
             # longer because we're looking at boundaries and not the blocks
             # themselves.
@@ -249,7 +257,7 @@ class SourceImage(object):
         """
         return (self.numRows, self.numCols)
     
-    def getIncrementLists(self):
+    def getOffsetLists(self):
         """
         Returns increment lists as a tuple
         """
@@ -289,10 +297,10 @@ class OutputImage(object):
         if not os.path.exists(directory):
             os.makedirs(directory)
         outName = directory + dfile + "_" + sfile + "_" + size
+        if self.isNonUniform:
+            outName = outName + 'n' 
         if self.isDetail:
             outName = outName + 'd'
-        elif self.isNonUniform:
-            outName = outName + 'n' 
         outName = outName + "_" + self.atype
         if self.is_hdr:
             outName = outName + '_hdr.tif'
@@ -363,7 +371,7 @@ class OutputImage(object):
             currentThreshold = tempList[p]['threshold']
             
             # Get increment lists from the destination image
-            rowList, colList = currentDestImage.getIncrementLists()
+            rowList, colList = currentDestImage.getOffsetLists()
             currentRowList = rowList
             currentColList = colList
             
@@ -451,7 +459,7 @@ class OutputImage(object):
                 
                 # Calculate block uniformity. We have to look at the current
                 # value and the next one, which correspond to the start and
-                # end values respectively. The increments will be all 0's if
+                # end values respectively. The offsets will be all 0's if
                 # uniform blocks are used.
                 start_x += currentColList[col]
                 end_x += currentColList[col+1]
