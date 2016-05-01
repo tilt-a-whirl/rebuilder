@@ -62,7 +62,6 @@ This can create some interesting block overlap effects.
 
 import rebuilderutils as rutils
 from optparse import OptionParser
-from PIL import Image
 from sys import stderr, argv
 import os.path
 
