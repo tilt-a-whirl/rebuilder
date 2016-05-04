@@ -220,6 +220,7 @@ if __name__ == '__main__':
     # Calculate internal data based on whether this is a source or
     # destination image. Passing the user-entered blockSize will flag the
     # image as a destination image.
+    print ("Calculating blocks...")
     source.calculateBlockVars()
     dest.calculateBlockVars(userBlockSize)
     
@@ -229,6 +230,7 @@ if __name__ == '__main__':
     maxValue = (srcRows * srcCols) - 1
     
     # Average lists are straightforward
+    print ("Calculating averages...")
     source.buildAverageList(maxValue)
     dest.buildAverageList(maxValue)
         
@@ -249,16 +251,19 @@ if __name__ == '__main__':
         width = destCols * userBlockSize
         height = destRows * userBlockSize
         
+        print ("Calculating blocks for detail layers...")
         destMed.calculateBlockVars(userBlockSizeMed, width, height)
         destHigh.calculateBlockVars(userBlockSizeHigh, width, height)
     
         # Build the average lists for each, using the maxValue calculated from
         # the common source image number of blocks
+        print ("Calculating averages for detail layers...")
         destMed.buildAverageList(maxValue)
         destHigh.buildAverageList(maxValue)
             
     # Iterate through the image types and combinations we're processing and
     # create output images
+    print ("Processing types and combinations...")
     for atype in algs:
         
         # Create the output based on the current algorithm
