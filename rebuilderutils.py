@@ -201,36 +201,55 @@ class SourceImage(object):
         Builds a lookup table from calculated averages
         """
         avgLUT = []
-        for i in range(self.numBlocks):
-            avgDict = self.avgList[i]
-            algSum = 0.0
-            variance = avgDict['variance']
-            if ('l' in atype):
-                algSum += avgDict['l']
-            if ('h' in atype):
-                algSum += avgDict['h']
-            if ('s' in atype):
-                algSum += avgDict['s']
-            if ('v' in atype):
-                algSum += avgDict['v']
-            if ('r' in atype):
-                algSum += avgDict['r']
-            if ('g' in atype):
-                algSum += avgDict['g']
-            if ('b' in atype):
-                algSum += avgDict['b']
+        # Process the color-only type separately. The average of r, g and b
+        # will be used to sort the list, and will be used to index it later.
+        if ('c' in atype):
+            for i in range(self.numBlocks):
+                avgDict = self.avgList[i]
+                r = avgDict['r']
+                g = avgDict['g']
+                b = avgDict['b']
+                avg = int((float(r) + float(g) + float(b)) / 3.0)
+                variance = avgDict['variance']
+                
+                # Store the original index, avg of r, g and b, and variance 
+                # together as a tuple, with the rgb values as their own tuple. 
+                # The avg of r, g and b will be used for sorting.
+                avgLUT.append((i, avg, variance, (r, g, b)))
+                
+        else:
+            for i in range(self.numBlocks):
+                avgDict = self.avgList[i]
+                algSum = 0.0
+                variance = avgDict['variance']
+                if ('l' in atype):
+                    algSum += avgDict['l']
+                if ('h' in atype):
+                    algSum += avgDict['h']
+                if ('s' in atype):
+                    algSum += avgDict['s']
+                if ('v' in atype):
+                    algSum += avgDict['v']
+                if ('r' in atype):
+                    algSum += avgDict['r']
+                if ('g' in atype):
+                    algSum += avgDict['g']
+                if ('b' in atype):
+                    algSum += avgDict['b']
+                
+                # We store the original index and avg together as a tuple, 
+                # because we will need the index to calculate the coordinates 
+                # of where this block originally came from. Also save the color
+                # variance as a third value in case we're using the detail 
+                # option.
+                avg = int(algSum / len(atype))   
+                avgLUT.append((i, avg, variance))
             
-            # We store the original index and avg together as a tuple, 
-            # because we will need the index to calculate the coordinates of 
-            # where this block originally came from. Also save the color
-            # variance as a third value in case we're using the detail option.
-            avg = int(algSum / len(atype))   
-            avgLUT.append((i, avg, variance))
-            
-        # Sort based on the second element of the tuple (the average). Sorting
-        # is only necessary for the source table but it won't hurt to sort
-        # the destination table as well. Since we're saving the index, we
-        # always know what part of the image each block comes from.
+        # Sort based on the second element of the tuple (the average). 
+        # Sorting is only necessary for the source table but it won't hurt 
+        # to sort the destination table as well. Since we're saving the 
+        # index, we always know what part of the image each block comes 
+        # from.
         avgLUT.sort(key=lambda tup: tup[1])
         
         # Assign to the internal variable so any other LUT that might have
@@ -401,7 +420,7 @@ class OutputImage(object):
             
             # Add the block size for this pass
             currentBlockSize = self.userBlockSize / (2**p)
-                                    
+            
             for i in range(currentNumBlocks):
                 j = (int(currentScale * i) * scale_mult) + \
                     (int(currentDestLUT[i][1]) * dest_mult)
@@ -431,23 +450,29 @@ class OutputImage(object):
                 if variance < currentThreshold:
                     skipList.append(dest_idx)
                 
-                # Calculate the source block bounding box (no size variations)
-                start_x = int(src_idx % srcNumCols) * srcBlockWidth
-                start_y = int(src_idx / srcNumCols) * srcBlockHeight
-                end_x = start_x + srcBlockWidth
-                end_y = start_y + srcBlockHeight
-                
-                # Grab the source image blocks
-                srcBlock = srcImg.crop((start_x, start_y, end_x, end_y))
-                
-                # Randomly determine whether this block will be flipped and/or 
-                # rotated
-                flip = randint(0, 2)
-                rotate = randint(0, 3)
-                if (flip > 0):
-                    srcBlock = srcBlock.transpose(flip-1)
-                if (rotate > 0):
-                    srcBlock = srcBlock.transpose(rotate-1)
+                # For the color-only type, we'll fill the destination block
+                # with a solid color. For all others, we'll paste a block from
+                # the source image.
+                if 'c' not in self.atype:
+                    
+                    # Calculate the source block bounding box (no size 
+                    # variations)
+                    start_x = int(src_idx % srcNumCols) * srcBlockWidth
+                    start_y = int(src_idx / srcNumCols) * srcBlockHeight
+                    end_x = start_x + srcBlockWidth
+                    end_y = start_y + srcBlockHeight
+                    
+                    # Grab the source image blocks
+                    srcBlock = srcImg.crop((start_x, start_y, end_x, end_y))
+                    
+                    # Randomly determine whether this block will be flipped 
+                    # and/or rotated
+                    flip = randint(0, 2)
+                    rotate = randint(0, 3)
+                    if (flip > 0):
+                        srcBlock = srcBlock.transpose(flip-1)
+                    if (rotate > 0):
+                        srcBlock = srcBlock.transpose(rotate-1)
                     
                 # Calculate destination block position and size
                 col = int(dest_idx % currentCols)
@@ -471,14 +496,24 @@ class OutputImage(object):
                 destBlockWidth = end_x - start_x 
                 destBlockHeight = end_y - start_y        
                     
-                # If the dest block size is not equal to the source block size, 
-                # resize the source block to be the same size as the dest block
-                if ((srcBlockWidth != destBlockWidth) or  
-                    (srcBlockHeight != destBlockHeight)):
-                    srcBlock = srcBlock.resize((destBlockWidth, destBlockHeight))
+                if 'c' in self.atype:
+                    rgb = srcList[j][3]
+                    srcBlock = Image.new("RGB", 
+                                         (destBlockWidth, destBlockHeight), 
+                                         rgb)
                 
-                # Paste the memory block into the correct coordinates of the 
-                # output file
+                else:
+                    
+                    # If the dest block size is not equal to the source block 
+                    # size, resize the source block to be the same size as the 
+                    # dest block
+                    if ((srcBlockWidth != destBlockWidth) or  
+                        (srcBlockHeight != destBlockHeight)):
+                        srcBlock = srcBlock.resize((destBlockWidth, 
+                                                    destBlockHeight))
+                    
+                # Paste the memory block into the correct coordinates of 
+                # the output file
                 self.outFile.paste(srcBlock, (start_x, start_y))
                 
             lastSkipList = skipList
