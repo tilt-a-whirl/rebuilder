@@ -11,7 +11,9 @@ accepts two images as input. Usage:
                                  
     -b blockSize      : size of tiles in destination image (default = 30)
     -t type           : create one single type (l, h, s, v, r, g, or b) or 
-                        combo of any number of valid types (default = lhsvrgb)
+                        combo of any number of valid types (default = lhsvrgb
+                        or none if color-only option is used)
+    -c                : color-only processing
     -n                : non-uniform block size, averages to blockSize 
                         (default = False)
     -d                : detail resolution (default = False)
@@ -29,7 +31,9 @@ backyard.tif, and the destination image is me.tif, the block size is 30
 and the type is luminance, the final output will be named me_backyard_30_l.tif 
 and me_backyard_30_l_hdr.tif. If non-uniform blocks are used, the size will
 be followed by 'n,' as in me_backyard_30n_l_hdr.tif. If the detail option is
-also specified, the file name will appear as me_backyard_30nd_l_hdr.tif. No 
+also specified, the file name will appear as me_backyard_30nd_l_hdr.tif. If 
+color-only is specified, the type character will be a 'c', as in 
+me_backyard_30_c_hdr.tif, and will not be combined with any other types. No 
 matter the input file formats, the output will be a TIFF. Note: Choose the best 
 compression possible for your input files, or none at all. See PIL docs for 
 supported input file formats.
@@ -47,6 +51,15 @@ a type is not provided, images are processed using luminance (l), hue (h),
 saturation (s), value (v), red (r), green (g), blue (b), and all combinations,
 resulting in 254 unique combinations (and output files) -- 508 including hdr 
 versions of each.
+
+The color-only option creates blocks of solid color (the average color of the
+source block) rather than replacing the blocks in the destination image with 
+the actual image blocks in the source image. If color-only is specified with
+any of the other types, it will only become an additional type itself. It will
+not be combined with the others as it requires different processing. If type is
+omitted and the color-only flag is on, only color processing will be done. If
+type is omitted and the color-only flag is off, the default types will be run
+(lhsvrgb).
 
 About detail resolution: This image is created in three passes, with the final
 two passes (medium and high resolution) being dependent on the color variance
@@ -77,6 +90,8 @@ def processArgs():
                  help="Block size in pixels (default = 30)")
     p.add_option("-t", action="store", dest="type", 
                  help="Type (l, h, s, v, r, g, b or combination - optional)")
+    p.add_option("-c", action="store_true", dest="doColor",
+                 help="Color-only processing - optional")
     p.add_option("-n", action="store_true", dest="isNonUniform", 
                  help="Make block size non-uniform - optional")
     p.add_option("-d", action="store_true", dest="isDetail",
@@ -88,6 +103,7 @@ def processArgs():
     
     p.set_defaults(blockSize = 30)
     p.set_defaults(type = '')
+    p.set_defaults(doColor = False)
     p.set_defaults(isNonUniform = False)
     p.set_defaults(isDetail = False)
     p.set_defaults(medThreshold = 5)
@@ -99,6 +115,7 @@ def processArgs():
     # args dict later
     temp_blockSize = int(opts.blockSize)
     temp_type = opts.type
+    temp_doColor = opts.doColor
     temp_isNonUniform = opts.isNonUniform
     temp_isDetail = opts.isDetail
     temp_medThreshold = int(opts.medThreshold)
@@ -161,6 +178,7 @@ def processArgs():
     
     rebld_args['blockSize'] = temp_blockSize
     rebld_args['type'] = typeDict.keys()
+    rebld_args['doColor'] = temp_doColor
     rebld_args['isNonUniform'] = temp_isNonUniform
     rebld_args['isDetail'] = temp_isDetail
     rebld_args['medThreshold'] = temp_medThreshold
@@ -176,6 +194,16 @@ if __name__ == '__main__':
     # Process arguments
     args = processArgs()
     
+    # Set up some variables
+    sourceName = args['src']
+    destName = args['dest']
+    doColor = args['doColor']
+    isNonUniform = args['isNonUniform']
+    isDetail = args['isDetail']
+    userBlockSize = args['blockSize']
+    userBlockSizeMed = 0
+    userBlockSizeHigh = 0
+    
     # Build the algorithm list
     opts = 'lhsvrgb'
     if (len(args['type']) == 1):
@@ -183,16 +211,13 @@ if __name__ == '__main__':
     elif (len(args['type']) > 1):
         algs = rutils.buildAlgorithmList(args['type'])
     else:
-        algs = rutils.buildAlgorithmList(opts)
-        
-    # Set up some variables
-    sourceName = args['src']
-    destName = args['dest']
-    isNonUniform = args['isNonUniform']
-    isDetail = args['isDetail']
-    userBlockSize = args['blockSize']
-    userBlockSizeMed = 0
-    userBlockSizeHigh = 0
+        # If color-only is specified and type is not given, this is allowed.
+        # But if color-only is off and type is not specified, load all the 
+        # types by default.
+        if doColor:
+            algs = []
+        else:
+            algs = rutils.buildAlgorithmList(opts)
     
     # Two extra destination images will be used if detail flag is set
     destMed = None
@@ -263,7 +288,9 @@ if __name__ == '__main__':
             
     # Iterate through the image types and combinations we're processing and
     # create output images
-    print ("Processing types and combinations...")
+    if len(algs) > 0:
+        print ("Processing types and combinations...")
+        
     for atype in algs:
         
         # Create the output based on the current algorithm
@@ -284,6 +311,33 @@ if __name__ == '__main__':
             output.buildImage(source, dest)
             output_hdr.buildImage(source, dest)
                 
+        # Save the output images
+        output.saveImage()
+        output_hdr.saveImage()
+        
+    # Do the color-only processing, if requested
+    if doColor:
+        
+        print ("Processing color-only option...")
+        
+        # Create the output for the color images
+        output = rutils.OutputImage(args, userBlockSize, 'c')
+        output_hdr = rutils.OutputImage(args, userBlockSize, 'c', True)
+        
+        # Lookups are a little different for this type
+        source.buildAverageLUT('c')
+        dest.buildAverageLUT('c')
+        
+        # Build hdr and non-hdr versions
+        if isDetail:
+            destMed.buildAverageLUT('c')
+            destHigh.buildAverageLUT('c')
+            output.buildImage(source, dest, destMed, destHigh)
+            output_hdr.buildImage(source, dest, destMed, destHigh)
+        else:
+            output.buildImage(source, dest)
+            output_hdr.buildImage(source, dest)
+        
         # Save the output images
         output.saveImage()
         output_hdr.saveImage()
