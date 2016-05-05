@@ -20,7 +20,7 @@ http://artful-i.com/art/
 
 ### Usage
 
-    rebuild.py srcFile destFile [-b blockSize -t type -n -d -m medThreshold -s smallThreshold]
+    rebuild.py srcFile destFile [-b blockSize -t type -c -n -d -m medThreshold -s smallThreshold]
                                  
     -b blockSize      : size of tiles in destination image (default = 30)
     -t type           : create one single type (l, h, s, v, r, g, or b) or 
