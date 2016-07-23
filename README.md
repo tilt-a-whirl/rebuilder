@@ -12,7 +12,7 @@ http://www.pythonware.com/products/pil/
 
 or here:
 
-http://rudix.org/packages/pil.html
+http://rudix.org/packages/python-pil.html
 
 Feel free to read more about the project that inspired this tool here:
 
