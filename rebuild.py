@@ -7,79 +7,85 @@ This rebuilds a "destination" image using the tiles of a "source" image. It
 accepts two images as input. See README.md for detailed usage instructions.
 """
 
-import rebuilderutils as rutils
-from optparse import OptionParser
-from sys import stderr, argv
+import argparse
 import os.path
+from sys import stderr
+
+from lib import utils
+from lib.image import SourceImage, OutputImage
+
 
 def process_args():
     """
     Processes command line arguments
     """
     rebld_args = {}
-        
-    usage = "Usage: %prog src_image dest_image [options]"
-    p = OptionParser(usage=usage)
-    p.add_option("-b", action="store", dest="block_size",
-                 help="Block size in pixels (default = 30)")
-    p.add_option("-t", action="store", dest="type", 
-                 help="Type (l, h, s, v, r, g, b or combination - optional)")
-    p.add_option("-c", action="store_true", dest="do_color",
-                 help="Color-only processing - optional")
-    p.add_option("-n", action="store_true", dest="is_non_uniform",
-                 help="Make block size non-uniform - optional")
-    p.add_option("-d", action="store_true", dest="is_detail",
-                 help="Use detail resolution - optional")
-    p.add_option("-m", action="store", dest="med_threshold",
-                 help="Medium res color variance threshold (1-10, default = 5)")
-    p.add_option("-s", action="store", dest="small_threshold",
-                 help="High res color variance threshold (1-10, default = 8)")
+
+    parser = argparse.ArgumentParser(description='Rebuilds one image from another image')
+
+    parser.add_argument("source_image",
+                        help="Source image file")
+    parser.add_argument("dest_image",
+                        help="Destination image file (the image to rebuild using source_image)")
+    parser.add_argument("-b",
+                        action="store",
+                        default="30",
+                        type=int,
+                        dest="block_size",
+                        help="Block size in pixels (default = 30)")
+    parser.add_argument("-t",
+                        action="store",
+                        default="",
+                        dest="type",
+                        help="Type (l, h, s, v, r, g, b or combination)")
+    parser.add_argument("-c",
+                        action="store_true",
+                        default="False",
+                        dest="do_color",
+                        help="Color-only processing")
+    parser.add_argument("-n",
+                        action="store_true",
+                        default=False,
+                        dest="is_non_uniform",
+                        help="Make block size non-uniform")
+    parser.add_argument("-d",
+                        action="store_true",
+                        default=False,
+                        dest="is_detail",
+                        help="Use detail resolution")
+    parser.add_argument("-m",
+                        action="store",
+                        default=5,
+                        type=int,
+                        dest="med_threshold",
+                        help="Medium res color variance threshold (1-10, default = 5)")
+    parser.add_argument("-s",
+                        action="store",
+                        default=8,
+                        type=int,
+                        dest="small_threshold",
+                        help="High res color variance threshold (1-10, default = 8)")
     
-    p.set_defaults(block_size = 30)
-    p.set_defaults(type = '')
-    p.set_defaults(do_color = False)
-    p.set_defaults(is_non_uniform = False)
-    p.set_defaults(is_detail = False)
-    p.set_defaults(med_threshold = 5)
-    p.set_defaults(small_threshold = 8)
-    
-    opts, args = p.parse_args()
-    
+    options = parser.parse_args()
+
     # Create some temporary variables to validate before assigning to the 
     # args dict later
-    temp_block_size = int(opts.block_size)
-    temp_type = opts.type
-    temp_do_color = opts.do_color
-    temp_is_non_uniform = opts.is_non_uniform
-    temp_is_detail = opts.is_detail
-    temp_med_threshold = int(opts.med_threshold)
-    temp_small_threshold = int(opts.small_threshold)
+    temp_block_size = options.block_size
+    temp_type = options.type
+    temp_med_threshold = options.med_threshold
+    temp_small_threshold = options.small_threshold
     
-    # Check that we have two file names
-    if (len(args) != 2):
-        stderr.write("Wrong number of arguments\n")
-        stderr.write("Usage: %s src_image dest_image " % argv[0])
-        stderr.write("[-b block_size -t type -n \n")
-        stderr.write("       -d -m med_threshold -s small_threshold]\n")
-        raise SystemExit(1)
-    
-    # Check for valid files. PIL will check that they're valid images.
-    if (not os.path.isfile(args[0])):
+    # Check for valid files. Pillow will check that they're valid images.
+    if not os.path.isfile(options.source_image):
         stderr.write("Invalid source file\n")
-        stderr.write("Usage: %s src_image dest_image " % argv[0])
-        stderr.write("[-b block_size -t type -n \n")
-        stderr.write("       -d -m med_threshold -s small_threshold]\n")
         raise SystemExit(1)
     
-    if (not os.path.isfile(args[1])):
+    if not os.path.isfile(options.dest_image):
         stderr.write("Invalid destination file\n")
-        stderr.write("Usage: %s src_image dest_image " % argv[0])
-        stderr.write("[-b block_size -t type -n \n")
-        stderr.write("       -d -m med_threshold -s small_threshold]\n")
         raise SystemExit(1)
     
     # Make sure we have a workable block size
-    if temp_block_size < 8 and temp_is_detail is True:
+    if temp_block_size < 8 and options.is_detail is True:
         stderr.write("Block size too small for detail option. Clamped to 8.\n")
         temp_block_size = 8
     elif temp_block_size < 4:
@@ -98,7 +104,7 @@ def process_args():
             stderr.write("Invalid type %s ignored\n" % t)
     
     # Check threshold values
-    if temp_is_detail is True:
+    if options.is_detail is True:
         if temp_med_threshold < 1 or temp_med_threshold > 10:
             stderr.write("Medium threshold out of 1-10 range, set to 5.\n")
             opts.temp_med_threshold = 5
@@ -107,18 +113,18 @@ def process_args():
             temp_small_threshold = 8
     
     # Set filenames and additional options
-    rebld_args['src'] = args[0]
-    rebld_args['dest'] = args[1]
+    rebld_args['src'] = options.source_image
+    rebld_args['dest'] = options.dest_image
     
     rebld_args['block_size'] = temp_block_size
     rebld_args['type'] = type_dict.keys()
-    rebld_args['do_color'] = temp_do_color
-    rebld_args['is_non_uniform'] = temp_is_non_uniform
-    rebld_args['is_detail'] = temp_is_detail
+    rebld_args['do_color'] = options.do_color
+    rebld_args['is_non_uniform'] = options.is_non_uniform
+    rebld_args['is_detail'] = options.is_detail
     rebld_args['med_threshold'] = temp_med_threshold
     rebld_args['small_threshold'] = temp_small_threshold
     
-    return (rebld_args)
+    return rebld_args
     
     
 if __name__ == '__main__':
@@ -140,18 +146,18 @@ if __name__ == '__main__':
     
     # Build the algorithm list
     opts = 'lhsvrgb'
-    if (len(args['type']) == 1):
+    if len(args['type']) == 1:
         algs = args['type'] 
-    elif (len(args['type']) > 1):
-        algs = rutils.build_algorithm_list(args['type'])
+    elif len(args['type']) > 1:
+        algs = utils.build_algorithm_list(args['type'])
     else:
         # If color-only is specified and type is not given, this is allowed.
         # But if color-only is off and type is not specified, load all the 
         # types by default.
-        if do_color:
+        if do_color is True:
             algs = []
         else:
-            algs = rutils.build_algorithm_list(opts)
+            algs = utils.build_algorithm_list(opts)
     
     # Two extra destination images will be used if detail flag is set
     dest_med = None
@@ -159,7 +165,7 @@ if __name__ == '__main__':
     
     # If detail resolution is set, we'll complete the same tasks for two 
     # additional destination images and manipulate the block size for all.
-    if is_detail:
+    if is_detail is True:
         
         # We need to make sure our block size is an even number before using 
         # it. Probably safer to subtract 1 than add. We'll also need additional
@@ -173,8 +179,8 @@ if __name__ == '__main__':
         user_block_size = user_block_size * 2
         
     # Create the source class instances and open the images
-    source = rutils.SourceImage.from_file(source_name)
-    dest = rutils.SourceImage.from_file(dest_name, is_non_uniform, is_detail)
+    source = SourceImage.from_file(source_name)
+    dest = SourceImage.from_file(dest_name, is_non_uniform, is_detail)
     
     # Calculate internal data based on whether this is a source or
     # destination image. Passing the user-entered blockSize will flag the
@@ -194,14 +200,13 @@ if __name__ == '__main__':
     dest.build_average_list(max_value)
         
     # Repeat the above process for the additional detail images
-    if is_detail:
+    if is_detail is True:
 
         # Create the additional image instances. We'll use the actual image
         # from the first destination image created so we don't open the same
         # file three times.
-        dest_image = dest.getImage()
-        dest_med = rutils.SourceImage.from_image(dest_image, is_non_uniform, is_detail)
-        dest_high = rutils.SourceImage.from_image(dest_image, is_non_uniform, is_detail)
+        dest_med = SourceImage.from_image(dest.image, is_non_uniform, is_detail)
+        dest_high = SourceImage.from_image(dest.image, is_non_uniform, is_detail)
         
         # We need to sync up the final image size with the main destination 
         # image. We'll use width and height overrides when calculating blocks 
@@ -228,15 +233,15 @@ if __name__ == '__main__':
     for atype in algs:
         
         # Create the output based on the current algorithm
-        output = rutils.OutputImage(args, user_block_size, atype)
-        output_hdr = rutils.OutputImage(args, user_block_size, atype, True)
+        output = OutputImage(args, user_block_size, atype)
+        output_hdr = OutputImage(args, user_block_size, atype, True)
         
         # Lookups change for each algorithm
         source.build_average_lut(atype)
         dest.build_average_lut(atype)
         
         # Build hdr and non-hdr versions
-        if is_detail:
+        if is_detail is True:
             dest_med.build_average_lut(atype)
             dest_high.build_average_lut(atype)
             output.build_image(source, dest, dest_med, dest_high)
@@ -250,20 +255,20 @@ if __name__ == '__main__':
         output_hdr.save_image()
         
     # Do the color-only processing, if requested
-    if do_color:
+    if do_color is True:
         
         print "Processing color-only option..."
         
         # Create the output for the color images
-        output = rutils.OutputImage(args, user_block_size, 'c')
-        output_hdr = rutils.OutputImage(args, user_block_size, 'c', True)
+        output = OutputImage(args, user_block_size, 'c')
+        output_hdr = OutputImage(args, user_block_size, 'c', True)
         
         # Lookups are a little different for this type
         source.build_average_lut('c')
         dest.build_average_lut('c')
         
         # Build hdr and non-hdr versions
-        if is_detail:
+        if is_detail is True:
             dest_med.build_average_lut('c')
             dest_high.build_average_lut('c')
             output.build_image(source, dest, dest_med, dest_high)
