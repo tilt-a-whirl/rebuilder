@@ -18,6 +18,8 @@ from lib.image import SourceImage, OutputImage
 def process_args():
     """
     Processes command line arguments
+
+    :return: A dict containing the processed options
     """
     rebld_args = {}
 
@@ -65,57 +67,64 @@ def process_args():
                         type=int,
                         dest="small_threshold",
                         help="High res color variance threshold (1-10, default = 8)")
-    
+
     options = parser.parse_args()
 
-    # Create some temporary variables to validate before assigning to the 
+    # Create some temporary variables to validate before assigning to the
     # args dict later
     temp_block_size = options.block_size
     temp_type = options.type
     temp_med_threshold = options.med_threshold
     temp_small_threshold = options.small_threshold
-    
+
     # Check for valid files. Pillow will check that they're valid images.
     if not os.path.isfile(options.source_image):
-        stderr.write("Invalid source file\n")
+        stderr.write("ERROR: Invalid source file '{}'.\n".format(options.source_image))
         raise SystemExit(1)
-    
+
     if not os.path.isfile(options.dest_image):
-        stderr.write("Invalid destination file\n")
+        stderr.write("ERROR: Invalid destination file '{}'.\n".format(options.dest_image))
         raise SystemExit(1)
-    
+
     # Make sure we have a workable block size
-    if temp_block_size < 8 and options.is_detail is True:
-        stderr.write("Block size too small for detail option. Clamped to 8.\n")
-        temp_block_size = 8
+    if options.is_detail is True:
+        if temp_block_size < 8:
+            stderr.write("WARNING: Block size too small for detail option. Clamped to 8.\n")
+            temp_block_size = 8
+        elif temp_block_size % 2 != 0:
+            temp_block_size -= 1
+            stderr.write("WARNING: Even block size needed for detail. Block size changed to '{}'.\n".format(
+                temp_block_size))
     elif temp_block_size < 4:
-        stderr.write("Block size too small. Clamped to 4.\n")
         temp_block_size = 4
-    
+        stderr.write("WARNING: Block size too small. Clamped to '{}'.\n".format(temp_block_size))
+
     # Check for duplicate, invalid and extra chars in type string
     type_dict = {}
     for t in temp_type:
         if t in 'lhsvrgb':
             if type_dict.has_key(t):
-                stderr.write("Duplicate type %s ignored\n" % t)
+                stderr.write("WARNING: Duplicate type '{}' ignored.\n".format(t))
             else:
                 type_dict[t] = 1
         else:
-            stderr.write("Invalid type %s ignored\n" % t)
-    
+            stderr.write("WARNING: Invalid type '{}' ignored.\n".format(t))
+
     # Check threshold values
     if options.is_detail is True:
         if temp_med_threshold < 1 or temp_med_threshold > 10:
-            stderr.write("Medium threshold out of 1-10 range, set to 5.\n")
-            opts.temp_med_threshold = 5
+            temp_med_threshold = 5
+            stderr.write("WARNING: Medium threshold out of 1-10 range, set to '{}'.\n".format(temp_med_threshold))
+
         if temp_small_threshold < 1 or temp_small_threshold > 10:
-            stderr.write("Small threshold out of 1-10 range, set to 8.\n")
             temp_small_threshold = 8
-    
+            stderr.write("WARNING: Small threshold out of 1-10 range, set to '{}'.\n".format(temp_small_threshold))
+
+
     # Set filenames and additional options
     rebld_args['src'] = options.source_image
     rebld_args['dest'] = options.dest_image
-    
+
     rebld_args['block_size'] = temp_block_size
     rebld_args['type'] = type_dict.keys()
     rebld_args['do_color'] = options.do_color
@@ -123,14 +132,12 @@ def process_args():
     rebld_args['is_detail'] = options.is_detail
     rebld_args['med_threshold'] = temp_med_threshold
     rebld_args['small_threshold'] = temp_small_threshold
-    
+
     return rebld_args
     
     
 if __name__ == '__main__':
-    """ 
-    Main function
-    """
+
     # Process arguments
     args = process_args()
     
@@ -167,13 +174,8 @@ if __name__ == '__main__':
     # additional destination images and manipulate the block size for all.
     if is_detail is True:
         
-        # We need to make sure our block size is an even number before using 
-        # it. Probably safer to subtract 1 than add. We'll also need additional
-        # block sizes for the other two images we'll pull from.
-        if user_block_size % 2 != 0:
-            user_block_size -= 1
-            stderr.write("Even block size needed when detail flag is set.\n")
-            stderr.write("Block size changed to %d.\n" % user_block_size)
+        # We'll need additional block sizes for the other two images
+        # we'll pull from.
         user_block_size_high = user_block_size / 2
         user_block_size_med = user_block_size
         user_block_size = user_block_size * 2
@@ -190,7 +192,7 @@ if __name__ == '__main__':
     dest.calculate_block_vars(user_block_size)
     
     # Get the number of blocks in the source image. We'll use this to
-    # send a maxValue when we build the average list.
+    # send a max_value when we build the average list.
     src_rows, src_cols = source.rows_cols
     max_value = (src_rows * src_cols) - 1
     

@@ -8,9 +8,17 @@ from lib import utils
 
 
 class SourceImage(object):
+    """
+    Class that defines and processes the source image and destination images,
+    each considered "sources" as opposed to "output."
+    """
     def __init__(self, image, is_non_uniform, is_detail):
         """
-        Init method
+        Init method.
+
+        :param image: The Image object
+        :param is_non_uniform: Boolean indicating non-uniformity
+        :param is_detail: Boolean indicating presence of detail option
         """
         self._image = image
         self._is_non_uniform = is_non_uniform
@@ -27,30 +35,48 @@ class SourceImage(object):
         self._avg_lut = []
 
     @classmethod
-    def from_file(cls, filename, is_non_uniform=False, is_detail=False):
+    def from_file(cls, file_name, is_non_uniform=False, is_detail=False):
         """
-        Class method for creating instance using image filename
+        Class method for creating instance using file name.
+
+        :param file_name: String representing source image file name
+        :param is_non_uniform: Boolean indicating non-uniformity
+        :param is_detail: Boolean indicating presence of detail option
+        :return: Class instance
         """
-        image = Image.open(filename)
+        image = Image.open(file_name)
         return cls(image, is_non_uniform, is_detail)
 
     @classmethod
     def from_image(cls, image, is_non_uniform=False, is_detail=False):
         """
-        Class method for creating instance using existing open image
+        Class method for creating instance using existing open Image.
+
+        :param image: The open Image
+        :param is_non_uniform: Boolean indicating non-uniformity
+        :param is_detail: Boolean indicating presence of detail option
+        :return: Class instance
         """
         return cls(image, is_non_uniform, is_detail)
 
-    def calculate_block_vars(self, user_block_size=0, width_over=0, height_over=0):
+    def calculate_block_vars(self, user_block_size=0, width_override=0, height_override=0):
         """
         For source image: Calculates block size for src image of any size, to
         be divided evenly into 256 square-ish tiles (as close as possible). May
         be less than 256 tiles but not more.
+
         If user_block_size = 0, it is assumed that this is the source image.
-        If user_block_size > 0, variable only applies to destination image.
-        For dest image: Calculates block vars based on user-input block size.
-        width_over and height_over are overrides for image width and height, and
+
+        If user_block_size > 0, user_block_size only applies to destination image.
+
+        For destination image: Calculates block vars based on user-input block size.
+        width_override and height_override are overrides for image width and height, and
         are used for secondary destination images when detail is turned on.
+
+        :param user_block_size: The block size
+        :param width_override: Override the width using this value
+        :param height_override: Override the height using this value
+        :return: Nothing
         """
         width = self._image.size[0]
         height = self._image.size[1]
@@ -59,16 +85,16 @@ class SourceImage(object):
 
             self._block_width = user_block_size
             self._block_height = user_block_size
-            if width_over > 0 and height_over > 0:
-                self._num_cols = int(width_over / user_block_size)
-                self._num_rows = int(height_over / user_block_size)
+            if width_override > 0 and height_override > 0:
+                self._num_cols = int(width_override / user_block_size)
+                self._num_rows = int(height_override / user_block_size)
             else:
                 self._num_cols = int(width / user_block_size)
                 self._num_rows = int(height / user_block_size)
 
             # Build a list of offsets for block width and height. If we're
             # not using uneven blocks, we'll just set them all to 0.
-            if self._is_non_uniform:
+            if self._is_non_uniform is True:
 
                 # Block width will never be expanded or shrunk by more than
                 # 2/3 of user block size. Create the lists one longer than
@@ -80,7 +106,7 @@ class SourceImage(object):
                 self._col_list = [randint(lower, upper) for c in range(self._num_cols + 1)]
 
                 # We won't increment the first and last row or column,
-                # otherwise we'll go over the edge of the image (or under).
+                # otherwise we'll go past the edge of the image.
                 self._row_list[0] = 0
                 self._col_list[0] = 0
                 self._row_list[self._num_rows] = 0
@@ -118,6 +144,9 @@ class SourceImage(object):
     def build_average_list(self, max_value):
         """
         Builds a list of average l h s v r g b, one for each block.
+
+        :param max_value: Maximum value used to scale the averages
+        :return: Nothing
         """
         # Build the list of average block hues, values, or saturations,
         # then sort
@@ -199,11 +228,14 @@ class SourceImage(object):
     def build_average_lut(self, atype):
         """
         Builds a lookup table from calculated averages
+
+        :param atype: A string representing the combination of algorithms
+        :return: Nothing
         """
         avg_lut = []
         # Process the color-only type separately. The average of r, g and b
         # will be used to sort the list, and will be used to index it later.
-        if ('c' in atype):
+        if 'c' in atype:
             for i in range(self._num_blocks):
                 avg_dict = self._avg_list[i]
                 r = avg_dict['r']
@@ -259,7 +291,9 @@ class SourceImage(object):
     @property
     def image(self):
         """
-        Returns image
+        Returns the Image
+
+        :return: Image object
         """
         return self._image
 
@@ -269,77 +303,99 @@ class SourceImage(object):
         Returns block size as a tuple. If destination image, this returns
         the user-specified block size in both values, whether or not the
         blocks are meant to be uniform.
+
+        :return: A tuple containing block width and block height
         """
         return self._block_width, self._block_height
 
     @property
     def rows_cols(self):
         """
-        Returns number of rows and columns as a tuple
+        Returns number of rows and columns as a tuple.
+
+        :return: A tuple containing the number of rows and columns
         """
         return self._num_rows, self._num_cols
 
     @property
     def offset_lists(self):
         """
-        Returns increment lists as a tuple
+        Returns offset lists as a tuple (used with non-uniform option).
+
+        :return: A tuple containing the list of row offsets and list of column offsets
         """
         return self._row_list, self._col_list
 
     @property
     def average_lut(self):
         """
-        Returns average lookup table
+        Returns average lookup table.
+
+        :return: Average lookup table (list).
         """
         return self._avg_lut
 
 
 class OutputImage(object):
+    """
+    Class that creates the final output image.
+    """
     def __init__(self, args, user_block_size, atype, is_hdr=False):
         """
         Init method - also creates appropriate output file name.
+
+        :param args: Processed command-line options
+        :param user_block_size: Block size
+        :param atype: Algorithm type combination
+        :param is_hdr: Boolean indicating whether this is an hdr image
         """
-        self.atype = atype
-        self.out_file = None
-        self.med_threshold = args['med_threshold']
-        self.small_threshold = args['small_threshold']
+        self._atype = atype
+        self._out_file = None
+        self._med_threshold = args['med_threshold']
+        self._small_threshold = args['small_threshold']
         self._is_non_uniform = args['is_non_uniform']
         self._is_detail = args['is_detail']
-        self.user_block_size = user_block_size
-        self.is_hdr = is_hdr
+        self._user_block_size = user_block_size
+        self._is_hdr = is_hdr
 
         # Build the output file name
-        if self._is_detail:
-            size = str(self.user_block_size / 2)
+        if self._is_detail is True:
+            size = "{}".format(self._user_block_size / 2)
         else:
-            size = str(self.user_block_size)
+            size = "{}".format(self._user_block_size)
         head, tail = os.path.split(args['src'])
         sfile, ext = os.path.splitext(tail)
         head, tail = os.path.split(args['dest'])
         dfile, ext = os.path.splitext(tail)
-        directory = "output/"
+        directory = "output"
         if not os.path.exists(directory):
             os.makedirs(directory)
-        out_name = directory + dfile + "_" + sfile + "_" + size
-        if self._is_non_uniform:
-            out_name = out_name + 'n'
-        if self._is_detail:
-            out_name = out_name + 'd'
-        out_name = out_name + "_" + self.atype
-        if self.is_hdr:
-            out_name = out_name + '_hdr.tif'
+        out_name = "{}/{}_{}_{}".format(directory, dfile, sfile, size)
+        if self._is_non_uniform is True:
+            out_name = "{}n".format(out_name)
+        if self._is_detail is True:
+            out_name = "{}d".format(out_name)
+        out_name = "{}_{}".format(out_name, self._atype)
+        if self._is_hdr is True:
+            out_name = "{}_hdr.tif".format(out_name)
         else:
-            out_name = out_name + '.tif'
-        self.out_name = out_name
+            out_name = "{}.tif".format(out_name)
+        self._out_name = out_name
 
     def build_image(self, source_image, dest_image, dest_med=None, dest_high=None):
         """
         Builds regular and hdr output images. Additional destination images
         are used when the detail flag is specified.
+
+        :param source_image: The source image to build from
+        :param dest_image: The destination image to rebuild
+        :param dest_med: Medium resolution destination image for detail option
+        :param dest_high: High resolution destination image for detail option
+        :return: Nothing
         """
         # Number of passes is based on whether this is a detail image.
         num_passes = 1
-        if self._is_detail:
+        if self._is_detail is True:
             num_passes = 3
 
         # Grab images, lookup tables and sizes
@@ -357,15 +413,15 @@ class OutputImage(object):
         # Calculate some block sizes and counts. Even if non-uniform, the
         # number of blocks in the output will match the number in the
         # destination image.
-        output_size_x = dest_num_cols * self.user_block_size
-        output_size_y = dest_num_rows * self.user_block_size
+        output_size_x = dest_num_cols * self._user_block_size
+        output_size_y = dest_num_rows * self._user_block_size
 
         # Create and build an output file that is the size of the number of
         # rows and columns of the destination file with the given block size.
         # Should be pretty close to the original size. More cropping can occur
         # if this is a detail image because three passes need to fit in one
         # size.
-        self.out_file = Image.new("RGB", (output_size_x, output_size_y))
+        self._out_file = Image.new("RGB", (output_size_x, output_size_y))
 
         # Get the number of source image blocks
         src_num_blocks = len(src_list)
@@ -374,16 +430,16 @@ class OutputImage(object):
         # inside the loop. If hdr, multiply the 'scale * i' assignment by 1 and
         # the other by 0, otherwise the opposite. That way we only get one
         # value or the other.
-        scale_mult = int(self.is_hdr)
-        dest_mult = int(not self.is_hdr)
+        scale_mult = int(self._is_hdr)
+        dest_mult = int(not self._is_hdr)
 
         # Create a list of variable dicts that will change with each pass.
         temp_list = [{}, {}, {}]
         temp_list[0]['dest_image'] = dest_image
         temp_list[1]['dest_image'] = dest_med
         temp_list[2]['dest_image'] = dest_high
-        temp_list[0]['threshold'] = self.med_threshold
-        temp_list[1]['threshold'] = self.small_threshold
+        temp_list[0]['threshold'] = self._med_threshold
+        temp_list[1]['threshold'] = self._small_threshold
         temp_list[2]['threshold'] = 0
 
         # Each pass will check against the skip list built in the previous pass
@@ -426,7 +482,7 @@ class OutputImage(object):
             skip_list = []
 
             # Add the block size for this pass
-            current_block_size = self.user_block_size / (2 ** p)
+            current_block_size = self._user_block_size / (2 ** p)
 
             for i in range(current_num_blocks):
                 j = (int(current_scale * i) * scale_mult) + \
@@ -445,7 +501,7 @@ class OutputImage(object):
                 # Work backwards to find the index of the larger block that
                 # contains this smaller one. Division by 0 is not an issue
                 # because this won't run on pass 0
-                if last_skip_list:
+                if last_skip_list is not None:
                     y = dest_idx / (current_cols * (2))
                     x = (dest_idx % current_cols) / (2)
                     outeridx = (y * (current_cols / 2)) + x
@@ -460,7 +516,7 @@ class OutputImage(object):
                 # For the color-only type, we'll fill the destination block
                 # with a solid color. For all others, we'll paste a block from
                 # the source image.
-                if 'c' not in self.atype:
+                if 'c' not in self._atype:
 
                     # Calculate the source block bounding box (no size
                     # variations)
@@ -503,7 +559,7 @@ class OutputImage(object):
                 dest_block_width = end_x - start_x
                 dest_block_height = end_y - start_y
 
-                if 'c' in self.atype:
+                if 'c' in self._atype:
                     rgb = src_list[j][3]
                     src_block = Image.new("RGB",
                                           (dest_block_width, dest_block_height),
@@ -519,13 +575,15 @@ class OutputImage(object):
 
                 # Paste the memory block into the correct coordinates of
                 # the output file
-                self.out_file.paste(src_block, (start_x, start_y))
+                self._out_file.paste(src_block, (start_x, start_y))
 
             last_skip_list = skip_list
 
     def save_image(self):
         """
-        Saves the output image
+        Saves the output image to disk.
+
+        :return: Nothing
         """
-        self.out_file.save(self.out_name, "TIFF")
-        print "Saved " + self.out_name
+        self._out_file.save(self._out_name, "TIFF")
+        print "Saved {}".format(self._out_name)
