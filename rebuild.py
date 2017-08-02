@@ -7,273 +7,280 @@ This rebuilds a "destination" image using the tiles of a "source" image. It
 accepts two images as input. See README.md for detailed usage instructions.
 """
 
-import rebuilderutils as rutils
-from optparse import OptionParser
-from sys import stderr, argv
+import argparse
 import os.path
+from sys import stderr
 
-def processArgs():
+from lib import utils
+from lib.image import SourceImage, OutputImage
+
+
+def process_args():
     """
     Processes command line arguments
+
+    :return: A dict containing the processed options
     """
     rebld_args = {}
-        
-    usage = "Usage: %prog srcImage destImage [options]"
-    p = OptionParser(usage=usage)
-    p.add_option("-b", action="store", dest="blockSize", 
-                 help="Block size in pixels (default = 30)")
-    p.add_option("-t", action="store", dest="type", 
-                 help="Type (l, h, s, v, r, g, b or combination - optional)")
-    p.add_option("-c", action="store_true", dest="doColor",
-                 help="Color-only processing - optional")
-    p.add_option("-n", action="store_true", dest="isNonUniform", 
-                 help="Make block size non-uniform - optional")
-    p.add_option("-d", action="store_true", dest="isDetail",
-                 help="Use detail resolution - optional")
-    p.add_option("-m", action="store", dest="medThreshold",
-                 help="Medium res color variance threshold (1-10, default = 5)")
-    p.add_option("-s", action="store", dest="smallThreshold",
-                 help="High res color variance threshold (1-10, default = 8)")
-    
-    p.set_defaults(blockSize = 30)
-    p.set_defaults(type = '')
-    p.set_defaults(doColor = False)
-    p.set_defaults(isNonUniform = False)
-    p.set_defaults(isDetail = False)
-    p.set_defaults(medThreshold = 5)
-    p.set_defaults(smallThreshold = 8)
-    
-    opts, args = p.parse_args()
-    
-    # Create some temporary variables to validate before assigning to the 
+
+    parser = argparse.ArgumentParser(description='Rebuilds one image from another image')
+
+    parser.add_argument("source_image",
+                        help="Source image file")
+    parser.add_argument("dest_image",
+                        help="Destination image file (the image to rebuild using source_image)")
+    parser.add_argument("-b",
+                        action="store",
+                        default="30",
+                        type=int,
+                        dest="block_size",
+                        help="Block size in pixels (default = 30)")
+    parser.add_argument("-t",
+                        action="store",
+                        default="",
+                        dest="type",
+                        help="Type (l, h, s, v, r, g, b or combination)")
+    parser.add_argument("-c",
+                        action="store_true",
+                        default="False",
+                        dest="do_color",
+                        help="Color-only processing")
+    parser.add_argument("-n",
+                        action="store_true",
+                        default=False,
+                        dest="is_non_uniform",
+                        help="Make block size non-uniform")
+    parser.add_argument("-d",
+                        action="store_true",
+                        default=False,
+                        dest="is_detail",
+                        help="Use detail resolution")
+    parser.add_argument("-m",
+                        action="store",
+                        default=5,
+                        type=int,
+                        dest="med_threshold",
+                        help="Medium res color variance threshold (1-10, default = 5)")
+    parser.add_argument("-s",
+                        action="store",
+                        default=8,
+                        type=int,
+                        dest="small_threshold",
+                        help="High res color variance threshold (1-10, default = 8)")
+
+    options = parser.parse_args()
+
+    # Create some temporary variables to validate before assigning to the
     # args dict later
-    temp_blockSize = int(opts.blockSize)
-    temp_type = opts.type
-    temp_doColor = opts.doColor
-    temp_isNonUniform = opts.isNonUniform
-    temp_isDetail = opts.isDetail
-    temp_medThreshold = int(opts.medThreshold)
-    temp_smallThreshold = int(opts.smallThreshold) 
-    
-    # Check that we have two file names
-    if (len(args) != 2):
-        stderr.write("Wrong number of arguments\n")
-        stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-b blockSize -t type -n \n")
-        stderr.write("       -d -m medThreshold -s smallThreshold]\n")
+    temp_block_size = options.block_size
+    temp_type = options.type
+    temp_med_threshold = options.med_threshold
+    temp_small_threshold = options.small_threshold
+
+    # Check for valid files. Pillow will check that they're valid images.
+    if not os.path.isfile(options.source_image):
+        stderr.write("ERROR: Invalid source file '{}'.\n".format(options.source_image))
         raise SystemExit(1)
-    
-    # Check for valid files. PIL will check that they're valid images.
-    if (not os.path.isfile(args[0])):
-        stderr.write("Invalid source file\n")
-        stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-b blockSize -t type -n \n")
-        stderr.write("       -d -m medThreshold -s smallThreshold]\n")
+
+    if not os.path.isfile(options.dest_image):
+        stderr.write("ERROR: Invalid destination file '{}'.\n".format(options.dest_image))
         raise SystemExit(1)
-    
-    if (not os.path.isfile(args[1])):
-        stderr.write("Invalid destination file\n")
-        stderr.write("Usage: %s srcImage destImage " % argv[0])
-        stderr.write("[-b blockSize -t type -n \n")
-        stderr.write("       -d -m medThreshold -s smallThreshold]\n")
-        raise SystemExit(1)
-    
+
     # Make sure we have a workable block size
-    if temp_blockSize < 8 and temp_isDetail:
-        stderr.write("Block size too small for detail option. Clamped to 8.\n")
-        temp_blockSize = 8
-    elif temp_blockSize < 4:
-        stderr.write("Block size too small. Clamped to 4.\n")
-        temp_blockSize = 4
-    
+    if options.is_detail is True:
+        if temp_block_size < 8:
+            stderr.write("WARNING: Block size too small for detail option. Clamped to 8.\n")
+            temp_block_size = 8
+        elif temp_block_size % 2 != 0:
+            temp_block_size -= 1
+            stderr.write("WARNING: Even block size needed for detail. Block size changed to '{}'.\n".format(
+                temp_block_size))
+    elif temp_block_size < 4:
+        temp_block_size = 4
+        stderr.write("WARNING: Block size too small. Clamped to '{}'.\n".format(temp_block_size))
+
     # Check for duplicate, invalid and extra chars in type string
-    typeDict = {}
+    type_dict = {}
     for t in temp_type:
         if t in 'lhsvrgb':
-            if typeDict.has_key(t):
-                stderr.write("Duplicate type %s ignored\n" % t)
+            if type_dict.has_key(t):
+                stderr.write("WARNING: Duplicate type '{}' ignored.\n".format(t))
             else:
-                typeDict[t] = 1
+                type_dict[t] = 1
         else:
-            stderr.write("Invalid type %s ignored\n" % t)
-    
+            stderr.write("WARNING: Invalid type '{}' ignored.\n".format(t))
+
     # Check threshold values
-    if temp_isDetail:
-        if temp_medThreshold < 1 or temp_medThreshold > 10:
-            stderr.write("Medium threshold out of 1-10 range, set to 5.\n")
-            opts.medThreshold = 5
-        if temp_smallThreshold < 1 or temp_smallThreshold > 10:
-            stderr.write("Small threshold out of 1-10 range, set to 8.\n")
-            temp_smallThreshold = 8
-    
+    if options.is_detail is True:
+        if temp_med_threshold < 1 or temp_med_threshold > 10:
+            temp_med_threshold = 5
+            stderr.write("WARNING: Medium threshold out of 1-10 range, set to '{}'.\n".format(temp_med_threshold))
+
+        if temp_small_threshold < 1 or temp_small_threshold > 10:
+            temp_small_threshold = 8
+            stderr.write("WARNING: Small threshold out of 1-10 range, set to '{}'.\n".format(temp_small_threshold))
+
+
     # Set filenames and additional options
-    rebld_args['src'] = args[0]
-    rebld_args['dest'] = args[1]
-    
-    rebld_args['blockSize'] = temp_blockSize
-    rebld_args['type'] = typeDict.keys()
-    rebld_args['doColor'] = temp_doColor
-    rebld_args['isNonUniform'] = temp_isNonUniform
-    rebld_args['isDetail'] = temp_isDetail
-    rebld_args['medThreshold'] = temp_medThreshold
-    rebld_args['smallThreshold'] = temp_smallThreshold
-    
-    return (rebld_args)
+    rebld_args['src'] = options.source_image
+    rebld_args['dest'] = options.dest_image
+
+    rebld_args['block_size'] = temp_block_size
+    rebld_args['type'] = type_dict.keys()
+    rebld_args['do_color'] = options.do_color
+    rebld_args['is_non_uniform'] = options.is_non_uniform
+    rebld_args['is_detail'] = options.is_detail
+    rebld_args['med_threshold'] = temp_med_threshold
+    rebld_args['small_threshold'] = temp_small_threshold
+
+    return rebld_args
     
     
 if __name__ == '__main__':
-    """ 
-    Main function
-    """
+
     # Process arguments
-    args = processArgs()
+    args = process_args()
     
     # Set up some variables
-    sourceName = args['src']
-    destName = args['dest']
-    doColor = args['doColor']
-    isNonUniform = args['isNonUniform']
-    isDetail = args['isDetail']
-    userBlockSize = args['blockSize']
-    userBlockSizeMed = 0
-    userBlockSizeHigh = 0
+    source_name = args['src']
+    dest_name = args['dest']
+    do_color = args['do_color']
+    is_non_uniform = args['is_non_uniform']
+    is_detail = args['is_detail']
+    user_block_size = args['block_size']
+    user_block_size_med = 0
+    user_block_size_high = 0
     
     # Build the algorithm list
     opts = 'lhsvrgb'
-    if (len(args['type']) == 1):
+    if len(args['type']) == 1:
         algs = args['type'] 
-    elif (len(args['type']) > 1):
-        algs = rutils.buildAlgorithmList(args['type'])
+    elif len(args['type']) > 1:
+        algs = utils.build_algorithm_list(args['type'])
     else:
         # If color-only is specified and type is not given, this is allowed.
         # But if color-only is off and type is not specified, load all the 
         # types by default.
-        if doColor:
+        if do_color is True:
             algs = []
         else:
-            algs = rutils.buildAlgorithmList(opts)
+            algs = utils.build_algorithm_list(opts)
     
     # Two extra destination images will be used if detail flag is set
-    destMed = None
-    destHigh = None
+    dest_med = None
+    dest_high = None
     
     # If detail resolution is set, we'll complete the same tasks for two 
     # additional destination images and manipulate the block size for all.
-    if isDetail: 
+    if is_detail is True:
         
-        # We need to make sure our block size is an even number before using 
-        # it. Probably safer to subtract 1 than add. We'll also need additional
-        # block sizes for the other two images we'll pull from.
-        if userBlockSize % 2 != 0:
-            userBlockSize -= 1
-            stderr.write("Even block size needed when detail flag is set.\n")
-            stderr.write("Block size changed to %d.\n" % userBlockSize)
-        userBlockSizeHigh = userBlockSize / 2
-        userBlockSizeMed = userBlockSize
-        userBlockSize = userBlockSize * 2
+        # We'll need additional block sizes for the other two images
+        # we'll pull from.
+        user_block_size_high = user_block_size / 2
+        user_block_size_med = user_block_size
+        user_block_size = user_block_size * 2
         
     # Create the source class instances and open the images
-    source = rutils.SourceImage.fromFile(sourceName)
-    dest = rutils.SourceImage.fromFile(destName, isNonUniform, isDetail)
+    source = SourceImage.from_file(source_name)
+    dest = SourceImage.from_file(dest_name, is_non_uniform, is_detail)
     
     # Calculate internal data based on whether this is a source or
     # destination image. Passing the user-entered blockSize will flag the
     # image as a destination image.
-    print ("Calculating blocks...")
-    source.calculateBlockVars()
-    dest.calculateBlockVars(userBlockSize)
+    print "Calculating blocks..."
+    source.calculate_block_vars()
+    dest.calculate_block_vars(user_block_size)
     
     # Get the number of blocks in the source image. We'll use this to
-    # send a maxValue when we build the average list.
-    srcRows, srcCols = source.getRowsCols()
-    maxValue = (srcRows * srcCols) - 1
+    # send a max_value when we build the average list.
+    src_rows, src_cols = source.rows_cols
+    max_value = (src_rows * src_cols) - 1
     
     # Average lists are straightforward
-    print ("Calculating averages...")
-    source.buildAverageList(maxValue)
-    dest.buildAverageList(maxValue)
+    print "Calculating averages..."
+    source.build_average_list(max_value)
+    dest.build_average_list(max_value)
         
     # Repeat the above process for the additional detail images
-    if isDetail:
+    if is_detail is True:
 
         # Create the additional image instances. We'll use the actual image
         # from the first destination image created so we don't open the same
         # file three times.
-        destImage = dest.getImage()
-        destMed = rutils.SourceImage.fromImage(destImage, isNonUniform, isDetail)
-        destHigh = rutils.SourceImage.fromImage(destImage, isNonUniform, isDetail)
+        dest_med = SourceImage.from_image(dest.image, is_non_uniform, is_detail)
+        dest_high = SourceImage.from_image(dest.image, is_non_uniform, is_detail)
         
         # We need to sync up the final image size with the main destination 
         # image. We'll use width and height overrides when calculating blocks 
         # in the additional images to make sure everything is the same size.
-        destRows, destCols = dest.getRowsCols()
-        width = destCols * userBlockSize
-        height = destRows * userBlockSize
+        dest_rows, dest_cols = dest.rows_cols
+        width = dest_cols * user_block_size
+        height = dest_rows * user_block_size
         
-        print ("Calculating blocks for detail layers...")
-        destMed.calculateBlockVars(userBlockSizeMed, width, height)
-        destHigh.calculateBlockVars(userBlockSizeHigh, width, height)
+        print "Calculating blocks for detail layers..."
+        dest_med.calculate_block_vars(user_block_size_med, width, height)
+        dest_high.calculate_block_vars(user_block_size_high, width, height)
     
         # Build the average lists for each, using the maxValue calculated from
         # the common source image number of blocks
-        print ("Calculating averages for detail layers...")
-        destMed.buildAverageList(maxValue)
-        destHigh.buildAverageList(maxValue)
+        print "Calculating averages for detail layers..."
+        dest_med.build_average_list(max_value)
+        dest_high.build_average_list(max_value)
             
     # Iterate through the image types and combinations we're processing and
     # create output images
     if len(algs) > 0:
-        print ("Processing types and combinations...")
+        print "Processing types and combinations..."
         
     for atype in algs:
         
         # Create the output based on the current algorithm
-        output = rutils.OutputImage(args, userBlockSize, atype)
-        output_hdr = rutils.OutputImage(args, userBlockSize, atype, True)
+        output = OutputImage(args, user_block_size, atype)
+        output_hdr = OutputImage(args, user_block_size, atype, True)
         
         # Lookups change for each algorithm
-        source.buildAverageLUT(atype)
-        dest.buildAverageLUT(atype)
+        source.build_average_lut(atype)
+        dest.build_average_lut(atype)
         
         # Build hdr and non-hdr versions
-        if isDetail:
-            destMed.buildAverageLUT(atype)
-            destHigh.buildAverageLUT(atype)
-            output.buildImage(source, dest, destMed, destHigh)
-            output_hdr.buildImage(source, dest, destMed, destHigh)
+        if is_detail is True:
+            dest_med.build_average_lut(atype)
+            dest_high.build_average_lut(atype)
+            output.build_image(source, dest, dest_med, dest_high)
+            output_hdr.build_image(source, dest, dest_med, dest_high)
         else:
-            output.buildImage(source, dest)
-            output_hdr.buildImage(source, dest)
+            output.build_image(source, dest)
+            output_hdr.build_image(source, dest)
                 
         # Save the output images
-        output.saveImage()
-        output_hdr.saveImage()
+        output.save_image()
+        output_hdr.save_image()
         
     # Do the color-only processing, if requested
-    if doColor:
+    if do_color is True:
         
-        print ("Processing color-only option...")
+        print "Processing color-only option..."
         
         # Create the output for the color images
-        output = rutils.OutputImage(args, userBlockSize, 'c')
-        output_hdr = rutils.OutputImage(args, userBlockSize, 'c', True)
+        output = OutputImage(args, user_block_size, 'c')
+        output_hdr = OutputImage(args, user_block_size, 'c', True)
         
         # Lookups are a little different for this type
-        source.buildAverageLUT('c')
-        dest.buildAverageLUT('c')
+        source.build_average_lut('c')
+        dest.build_average_lut('c')
         
         # Build hdr and non-hdr versions
-        if isDetail:
-            destMed.buildAverageLUT('c')
-            destHigh.buildAverageLUT('c')
-            output.buildImage(source, dest, destMed, destHigh)
-            output_hdr.buildImage(source, dest, destMed, destHigh)
+        if is_detail is True:
+            dest_med.build_average_lut('c')
+            dest_high.build_average_lut('c')
+            output.build_image(source, dest, dest_med, dest_high)
+            output_hdr.build_image(source, dest, dest_med, dest_high)
         else:
-            output.buildImage(source, dest)
-            output_hdr.buildImage(source, dest)
+            output.build_image(source, dest)
+            output_hdr.build_image(source, dest)
         
         # Save the output images
-        output.saveImage()
-        output_hdr.saveImage()
+        output.save_image()
+        output_hdr.save_image()
                     
-    print ("Finished!")
+    print "Finished!"
