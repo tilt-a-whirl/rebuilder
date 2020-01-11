@@ -34,6 +34,8 @@ class SourceImage(object):
         self._avg_list = []
         self._avg_lut = []
 
+        self._coord_list = []
+
     @classmethod
     def from_file(cls, file_name, is_non_uniform=False, is_detail=False):
         """
@@ -140,6 +142,16 @@ class SourceImage(object):
 
         self._num_blocks = self._num_rows * self._num_cols
         self._block_size = self._block_width * self._block_height
+
+    def build_coordinate_list(self):
+        for i in range(self._num_blocks):
+            col = int(i % self._num_cols)
+            row = int(i / self._num_cols)
+            start_x = col * self._block_width
+            start_y = row * self._block_height
+            end_x = start_x + self._block_width
+            end_y = start_y + self._block_height
+            self._coord_list.append((start_x, start_y, end_x, end_y))
 
     def build_average_list(self, max_value):
         """
@@ -334,6 +346,19 @@ class SourceImage(object):
         :return: Average lookup table (list).
         """
         return self._avg_lut
+
+    @property
+    def average_list(self):
+        """
+        Returns list of averages.
+
+        :return: Average list (list of dicts).
+        """
+        return self._avg_list
+
+    @property
+    def coordinate_list(self):
+        return self._coord_list
 
 
 class OutputImage(object):

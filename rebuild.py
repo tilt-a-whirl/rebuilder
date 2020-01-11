@@ -79,12 +79,10 @@ def process_args():
 
     # Check for valid files. Pillow will check that they're valid images.
     if not os.path.isfile(options.source_image):
-        stderr.write("ERROR: Invalid source file '{}'.\n".format(options.source_image))
-        raise SystemExit(1)
+        raise SystemExit("ERROR: Invalid source file '{}'.\n".format(options.source_image))
 
     if not os.path.isfile(options.dest_image):
-        stderr.write("ERROR: Invalid destination file '{}'.\n".format(options.dest_image))
-        raise SystemExit(1)
+        raise SystemExit("ERROR: Invalid destination file '{}'.\n".format(options.dest_image))
 
     # Make sure we have a workable block size
     if options.is_detail is True:
