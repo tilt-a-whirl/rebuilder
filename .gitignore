@@ -4,3 +4,4 @@
 *.tif
 *.pyc
 .idea/
+*.DS_Store

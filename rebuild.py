@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/env python3
 
 """
 rebuild.py by Amy Tucker
@@ -101,7 +101,7 @@ def process_args():
     type_dict = {}
     for t in temp_type:
         if t in 'lhsvrgb':
-            if type_dict.has_key(t):
+            if t in type_dict:
                 stderr.write("WARNING: Duplicate type '{}' ignored.\n".format(t))
             else:
                 type_dict[t] = 1
@@ -174,7 +174,7 @@ if __name__ == '__main__':
         
         # We'll need additional block sizes for the other two images
         # we'll pull from.
-        user_block_size_high = user_block_size / 2
+        user_block_size_high = int(user_block_size / 2)
         user_block_size_med = user_block_size
         user_block_size = user_block_size * 2
         
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     # Calculate internal data based on whether this is a source or
     # destination image. Passing the user-entered blockSize will flag the
     # image as a destination image.
-    print "Calculating blocks..."
+    print ("Calculating blocks...")
     source.calculate_block_vars()
     dest.calculate_block_vars(user_block_size)
     
@@ -195,7 +195,7 @@ if __name__ == '__main__':
     max_value = (src_rows * src_cols) - 1
     
     # Average lists are straightforward
-    print "Calculating averages..."
+    print ("Calculating averages...")
     source.build_average_list(max_value)
     dest.build_average_list(max_value)
         
@@ -215,20 +215,20 @@ if __name__ == '__main__':
         width = dest_cols * user_block_size
         height = dest_rows * user_block_size
         
-        print "Calculating blocks for detail layers..."
+        print ("Calculating blocks for detail layers...")
         dest_med.calculate_block_vars(user_block_size_med, width, height)
         dest_high.calculate_block_vars(user_block_size_high, width, height)
     
         # Build the average lists for each, using the maxValue calculated from
         # the common source image number of blocks
-        print "Calculating averages for detail layers..."
+        print ("Calculating averages for detail layers...")
         dest_med.build_average_list(max_value)
         dest_high.build_average_list(max_value)
             
     # Iterate through the image types and combinations we're processing and
     # create output images
     if len(algs) > 0:
-        print "Processing types and combinations..."
+        print ("Processing types and combinations...")
         
     for atype in algs:
         
@@ -257,7 +257,7 @@ if __name__ == '__main__':
     # Do the color-only processing, if requested
     if do_color is True:
         
-        print "Processing color-only option..."
+        print ("Processing color-only option...")
         
         # Create the output for the color images
         output = OutputImage(args, user_block_size, 'c')
@@ -281,4 +281,4 @@ if __name__ == '__main__':
         output.save_image()
         output_hdr.save_image()
                     
-    print "Finished!"
+    print ("Finished!")

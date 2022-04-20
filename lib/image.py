@@ -507,7 +507,7 @@ class OutputImage(object):
             skip_list = []
 
             # Add the block size for this pass
-            current_block_size = self._user_block_size / (2 ** p)
+            current_block_size = int(self._user_block_size / (2 ** p))
 
             for i in range(current_num_blocks):
                 j = (int(current_scale * i) * scale_mult) + \
@@ -611,4 +611,4 @@ class OutputImage(object):
         :return: Nothing
         """
         self._out_file.save(self._out_name, "TIFF")
-        print "Saved {}".format(self._out_name)
+        print ("Saved {}".format(self._out_name))
